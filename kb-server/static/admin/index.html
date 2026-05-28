@@ -396,9 +396,10 @@ function initStats() {
     document.getElementById('fmtDetail').innerHTML = fd || '<div class="empty"><p>暂无数据</p></div>';
   });
 
-  fetch(API + '/api/admin/ai-search-logs').then(function(r) { return r.json(); }).then(function(d) {
+  fetch(API + '/api/admin/ai-search-logs?limit=1000&page=1').then(function(r) { return r.json(); }).then(function(d) {
+    var logs = (d && d.logs) ? d.logs : (Array.isArray(d) ? d : []);
     var daily = {};
-    (d || []).forEach(function(l) {
+    logs.forEach(function(l) {
       var dt = new Date(l.timestamp || l.created_at).toLocaleDateString('zh-CN', {month:'short',day:'numeric'});
       daily[dt] = (daily[dt] || 0) + 1;
     });
@@ -470,16 +471,17 @@ function searchView(v) {
   v.innerHTML = '<h3>🔍 AI 搜索记录</h3><div class="card"><div class="ch">搜索记录 <span id="scnt" style="font-weight:400;color:#999;font-size:13px"></span>' +
     '<a href="'+API+'/api/admin/export/search-logs?days=7" download style="margin-left:auto;padding:6px 16px;border-radius:8px;border:1px solid var(--b);color:var(--b);font-size:12px;font-weight:600;text-decoration:none;font-family:inherit">📥 导出 CSV</a></div>' +
     '<div class="cb" id="slist"><div class="loading">加载中...</div></div></div>';
-  fetch(API + '/api/admin/ai-search-logs').then(function(r) { return r.json(); }).then(function(d) {
-    var logs = Array.isArray(d) ? d : [];
-    document.getElementById('scnt').textContent = '共 ' + logs.length + ' 条';
+  fetch(API + '/api/admin/ai-search-logs?limit=200&page=1').then(function(r) { return r.json(); }).then(function(d) {
+    var logs = (d && d.logs) ? d.logs : (Array.isArray(d) ? d : []);
+    document.getElementById('scnt').textContent = '共 ' + (d.total || logs.length) + ' 条';
     if (!logs.length) {
       document.getElementById('slist').innerHTML = '<div class="empty"><div class="icon">🔍</div><p>暂无搜索记录</p></div>';
       return;
     }
     var h = '<table><thead><tr><th style="width:155px">时间</th><th>搜索内容</th><th style="width:50px">结果</th><th style="width:60px">耗时</th><th style="width:60px">类型</th></tr></thead><tbody>';
     logs.forEach(function(l) {
-      var elapsed = l.elapsed_ms ? (l.elapsed_ms < 1000 ? Math.round(l.elapsed_ms)+'ms' : (l.elapsed_ms/1000).toFixed(1)+'s') : '-';
+      var rt = l.responseTime || l.elapsed_ms || 0;
+      var elapsed = rt > 0 ? (rt < 1000 ? Math.round(rt)+'ms' : (rt/1000).toFixed(1)+'s') : '-';
       h += '<tr><td style="font-size:12px;color:#999">' + fmtTime(l.timestamp || l.created_at || l.time) + '</td>' +
         '<td style="font-weight:500">' + esc(l.query || l.question || '--') + '</td>' +
         '<td style="text-align:center;font-weight:600;color:' + ((l.results||0)>0?'var(--g)':'var(--t3)') + '">' + (l.results!=null?l.results:'-') + '</td>' +

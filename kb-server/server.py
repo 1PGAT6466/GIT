@@ -2177,10 +2177,15 @@ async def admin_error_logs():
 
 
 @app.get("/api/admin/ai-search-logs")
-async def admin_ai_search_logs():
+async def admin_ai_search_logs(
+    limit: int = Query(default=200, ge=10, le=1000),
+    page: int = Query(default=1, ge=1),
+):
     """
-    获取 AI 搜索记录
+    获取 AI 搜索记录（分页）
     读取：~/kb-server/logs/search_*.jsonl
+    limit: 每页条数（10-1000，默认 200）
+    page: 页码（从 1 开始）
     """
     try:
         from datetime import timedelta
@@ -2206,14 +2211,23 @@ async def admin_ai_search_logs():
                                     "query": entry.get("query", ""),
                                     "userId": entry.get("ip", "anonymous"),
                                     "status": "success",
-                                    "responseTime": 0,
+                                    "responseTime": entry.get("elapsed_ms", 0),
                                 })
                             except:
                                 pass
         
-        # 按时间倒序，最多返回 200 条
+        # 按时间倒序，计算总数
         logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-        return logs[:200]
+        total = len(logs)
+        start = (page - 1) * limit
+        paged = logs[start:start + limit]
+        return {
+            "logs": paged,
+            "total": total,
+            "page": page,
+            "page_size": limit,
+            "total_pages": max(1, (total + limit - 1) // limit) if total > 0 else 0,
+        }
     except Exception as e:
         print(f"读取搜索日志失败：{e}")
         return []
@@ -2282,10 +2296,13 @@ async def admin_server_status():
 
 
 @app.get("/api/admin/recent-activities")
-async def admin_recent_activities():
+async def admin_recent_activities(
+    limit: int = Query(default=50, ge=10, le=200),
+):
     """
     获取最近操作记录
     返回：最近的文件上传、删除等操作
+    limit: 返回条数上限（10-200，默认 50）
     """
     try:
         with _meta_lock:
@@ -2295,7 +2312,7 @@ async def admin_recent_activities():
                 if fh not in seen:
                     seen[fh] = m
             activities = []
-            for r in list(seen.values())[:50]:
+            for r in list(seen.values())[:limit]:
                 activities.append({
                     "type": "upload",
                     "action": "upload",
