@@ -37,7 +37,8 @@ nav a {
 }
 nav a:hover { color: var(--o); background: var(--ol); }
 nav a.active { color: var(--o); background: var(--ol); font-weight: 600; }
-nav a.active::after { content: ''; position: absolute; bottom: -1px; left: 50%; transform: translateX(-50%); width: 24px; height: 3px; background: var(--o); border-radius: 3px 3px 0 0; }
+nav a.active::after { content: ''; position: absolute; bottom: -1px; left: 50%; transform: translateX(-50%); width: 24px; height: 3px; background: var(--o); border-radius: 3px 3px 0 0; transition: all .3s ease; animation: navGlow 2s ease-in-out infinite; }
+@keyframes navGlow { 0%, 100% { box-shadow: 0 0 4px var(--o), 0 0 8px rgba(255,103,0,.3); } 50% { box-shadow: 0 0 8px var(--o), 0 0 16px rgba(255,103,0,.5); } }
 
 /* Main */
 main { max-width: 1200px; margin: 0 auto; padding: 28px 32px; }

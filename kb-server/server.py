@@ -2620,4 +2620,4 @@ async def reset_collection(request: Request):
 if __name__ == "__main__":
     import uvicorn
     max_body = int(os.getenv("KB_MAX_FILE_MB", "200")) * 1024 * 1024
-    uvicorn.run(app, host=HOST, port=PORT, log_level="info", limit_max_requests=None, timeout_keep_alive=300, limit_concurrency=20)
+    uvicorn.run(app, host=HOST, port=PORT, log_level="info", limit_max_requests=10000, timeout_keep_alive=300, limit_concurrency=50)

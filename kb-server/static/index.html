@@ -543,10 +543,13 @@ async function kwSearch(q,p){
       var full=(it.text||it.text_preview||'');
       var preview=full.substring(0,300).replace(/</g,'&lt;').replace(/>/g,'&gt;');
       var score=it.score||0;
-      var scoreClass=score>0.8?'high':'',scorePct=Math.round(Math.min(score*100,100));
+      var scoreClass=score>0.8?'high':'';
+      // 星级显示（0-5 星）
+      var starCount = Math.round(score * 5);
+      var starDisplay = '★'.repeat(Math.max(1, starCount)) + '☆'.repeat(Math.max(0, 5 - starCount));
       preview=highlightText(preview,q);
       preview=cfgHighlight(preview);
-      h+='<div class="result-card" id="card'+i+'"><div class="rc-header"><div class="rc-file">📄 <span>'+escapeHtml(it.file_name||'未知文件')+'</span></div><div class="rc-score '+scoreClass+'">★ '+scorePct+'%</div></div>';
+      h+='<div class="result-card" id="card'+i+'"><div class="rc-header"><div class="rc-file">📄 <span>'+escapeHtml(it.file_name||'未知文件')+'</span></div><div class="rc-score '+scoreClass+'">'+starDisplay+'</div></div>';
       h+='<div class="result-meta"><span class="trust-badge '+t[1]+'">'+t[0]+'</span><span class="tag-pill">'+(it.category||'未分类')+'</span>';
       if(it.tags&&it.tags.length)for(var k=0;k<Math.min(it.tags.length,3);k++)h+='<span class="tag-pill">#'+it.tags[k]+'</span>';
       h+='</div>';
