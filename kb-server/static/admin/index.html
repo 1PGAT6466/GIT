@@ -154,6 +154,33 @@ tbody tr:nth-child(10) { animation-delay: .27s; }
 
 <script>
 var API = window.location.origin;
+// v4.2: 管理面板 fetch 超时+重试
+var ADMIN_TIMEOUT = 20000;
+function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+async function safeFetch(url, opts, timeoutMs, retries) {
+  timeoutMs = timeoutMs || ADMIN_TIMEOUT;
+  retries = retries != null ? retries : 1;
+  var lastErr = null;
+  for (var attempt = 0; attempt <= retries; attempt++) {
+    try {
+      var controller = new AbortController();
+      var timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+      var fetchOpts = Object.assign({}, opts || {}, { signal: controller.signal });
+      var resp = await fetch(url, fetchOpts);
+      clearTimeout(timer);
+      if (!resp.ok && attempt < retries && resp.status >= 500) {
+        await sleep(1500 * (attempt + 1));
+        continue;
+      }
+      return resp;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < retries) await sleep(2000 * (attempt + 1));
+    }
+  }
+  throw lastErr || new Error('请求失败（已重试）');
+}
+
 var NAV = [
   { id: 'dashboard', label: '📊 总览', icon: '' },
   { id: 'upload', label: '📤 上传', icon: '' },
@@ -236,7 +263,7 @@ function initDashboard() {
   _dashboardCharts.forEach(function(c) { try { c.destroy(); } catch(e) {} });
   _dashboardCharts = [];
 
-  fetch(API + '/api/admin/stats').then(function(r) { return r.json(); }).then(function(d) {
+  safeFetch(API + '/api/admin/stats').then(function(r) { return r.json(); }).then(function(d) {
     var avgChunks = d.totalFiles ? Math.round(d.totalChunks / d.totalFiles) : 0;
     document.getElementById('dashCards').innerHTML =
       '<div class="sc"><div class="si oc">📄</div><div><div class="sv">' + (d.totalFiles || 0) + '</div><div class="sl">文档总数</div><div class="st neutral">📂 已索引</div></div></div>' +
@@ -258,7 +285,7 @@ function initDashboard() {
     }
   });
 
-  fetch(API + '/api/admin/upload-trend').then(function(r) { return r.json(); }).then(function(d) {
+  safeFetch(API + '/api/admin/upload-trend').then(function(r) { return r.json(); }).then(function(d) {
     if (!d || !d.length) return;
     var trendChart = new Chart(document.getElementById('cTrend'), {
       type: 'line',
@@ -271,7 +298,7 @@ function initDashboard() {
     _dashboardCharts.push(trendChart);
   });
 
-  fetch(API + '/api/admin/server-status').then(function(r) { return r.json(); }).then(function(d) {
+  safeFetch(API + '/api/admin/server-status').then(function(r) { return r.json(); }).then(function(d) {
     document.getElementById('svrStatus').innerHTML =
       '<div><div style="font-size:12px;color:#999;margin-bottom:6px">CPU</div><div style="font-size:26px;font-weight:700;margin-bottom:6px">' + (d.cpu || 0) + '<span style="font-size:14px;color:#999">%</span></div><div class="pbar"><div style="width:' + (d.cpu || 0) + '%;background:var(--o)"></div></div></div>' +
       '<div><div style="font-size:12px;color:#999;margin-bottom:6px">内存</div><div style="font-size:26px;font-weight:700;margin-bottom:6px">' + (d.memory || 0) + '<span style="font-size:14px;color:#999">%</span></div><div class="pbar"><div style="width:' + (d.memory || 0) + '%;background:var(--g)"></div></div></div>' +
@@ -279,7 +306,7 @@ function initDashboard() {
   });
 
   // 热门搜索
-  fetch(API + '/api/admin/hot-queries?days=7&top_n=10').then(function(r){return r.json()}).then(function(d){
+  safeFetch(API + '/api/admin/hot-queries?days=7&top_n=10').then(function(r){return r.json()}).then(function(d){
     var queries = d.hot_queries || [];
     if (!queries.length) {
       document.getElementById('hotQueries').innerHTML = '<div style="color:var(--t3);padding:10px">暂无搜索数据</div>';
@@ -308,7 +335,7 @@ function uploadView(v) {
 }
 
 function refreshUploads() {
-  fetch(API + '/api/admin/recent-activities').then(function(r) { return r.json(); }).then(function(d) {
+  safeFetch(API + '/api/admin/recent-activities').then(function(r) { return r.json(); }).then(function(d) {
     var items = d.filter(function(i) { return i.type === 'upload' || i.action === 'upload'; });
     if (!items.length) {
       document.getElementById('ulist').innerHTML = '<div class="empty"><div class="icon">📭</div><p>暂无上传记录</p></div>';
@@ -342,7 +369,7 @@ function tasksView(v) {
 }
 
 function refreshTasks() {
-  fetch(API + '/api/admin/recent-activities').then(function(r) { return r.json(); }).then(function(d) {
+  safeFetch(API + '/api/admin/recent-activities').then(function(r) { return r.json(); }).then(function(d) {
     var items = d.filter(function(i) { return i.status === 'processing' || i.status === 'queued'; });
     if (!items.length) {
       document.getElementById('tlist').innerHTML = '<div class="empty"><div class="icon">✅</div><p>暂无进行中的任务</p></div>';
@@ -372,7 +399,7 @@ function statsView(v) {
 }
 
 function initStats() {
-  fetch(API + '/api/admin/stats').then(function(r) { return r.json(); }).then(function(d) {
+  safeFetch(API + '/api/admin/stats').then(function(r) { return r.json(); }).then(function(d) {
     document.getElementById('statCards').innerHTML =
       '<div class="sc"><div class="si oc">📄</div><div><div class="sv">' + (d.totalFiles || 0) + '</div><div class="sl">总文件数</div></div></div>' +
       '<div class="sc"><div class="si bc">✂️</div><div><div class="sv">' + (d.totalChunks || 0) + '</div><div class="sl">总片段数</div></div></div>' +
@@ -396,7 +423,7 @@ function initStats() {
     document.getElementById('fmtDetail').innerHTML = fd || '<div class="empty"><p>暂无数据</p></div>';
   });
 
-  fetch(API + '/api/admin/ai-search-logs?limit=1000&page=1').then(function(r) { return r.json(); }).then(function(d) {
+  safeFetch(API + '/api/admin/ai-search-logs?limit=1000&page=1').then(function(r) { return r.json(); }).then(function(d) {
     var logs = (d && d.logs) ? d.logs : (Array.isArray(d) ? d : []);
     var daily = {};
     logs.forEach(function(l) {
@@ -434,7 +461,7 @@ function serverView(v) {
     var ccEl = document.getElementById(tid + '_cc');
     var mcEl = document.getElementById(tid + '_mc');
     if (!ccEl || !mcEl) { return; }  // DOM 已移出则停止
-    fetch(API + '/api/admin/server-status').then(function(r) { return r.json(); }).then(function(d) {
+    safeFetch(API + '/api/admin/server-status').then(function(r) { return r.json(); }).then(function(d) {
       var t = new Date().toLocaleTimeString('zh-CN');
       cpuH.push({ time: t, value: d.cpu || 0 }); if (cpuH.length > 30) cpuH.shift();
       memH.push({ time: t, value: d.memory || 0 }); if (memH.length > 30) memH.shift();
@@ -471,7 +498,7 @@ function searchView(v) {
   v.innerHTML = '<h3>🔍 AI 搜索记录</h3><div class="card"><div class="ch">搜索记录 <span id="scnt" style="font-weight:400;color:#999;font-size:13px"></span>' +
     '<a href="'+API+'/api/admin/export/search-logs?days=7" download style="margin-left:auto;padding:6px 16px;border-radius:8px;border:1px solid var(--b);color:var(--b);font-size:12px;font-weight:600;text-decoration:none;font-family:inherit">📥 导出 CSV</a></div>' +
     '<div class="cb" id="slist"><div class="loading">加载中...</div></div></div>';
-  fetch(API + '/api/admin/ai-search-logs?limit=200&page=1').then(function(r) { return r.json(); }).then(function(d) {
+  safeFetch(API + '/api/admin/ai-search-logs?limit=200&page=1').then(function(r) { return r.json(); }).then(function(d) {
     var logs = (d && d.logs) ? d.logs : (Array.isArray(d) ? d : []);
     document.getElementById('scnt').textContent = '共 ' + (d.total || logs.length) + ' 条';
     if (!logs.length) {
@@ -500,7 +527,7 @@ function toolsMgrView(v) {
     '<button onclick="saveTools()" style="margin-left:auto;padding:8px 22px;border-radius:8px;border:none;background:var(--o);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">💾 保存</button></div>' +
     '<div class="cb" id="tools-editor"><div class="loading">加载中...</div></div></div>' +
     '<div style="margin-top:12px;text-align:center"><button onclick="addToolRow()" style="padding:8px 24px;border-radius:8px;border:2px dashed var(--o);background:var(--ol);color:var(--o);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">＋ 添加工具</button></div>';
-  fetch(API + '/api/admin/tools').then(function(r){return r.json()}).then(function(d){
+  safeFetch(API + '/api/admin/tools').then(function(r){return r.json()}).then(function(d){
     window._toolsData = d.tools || [];
     renderToolsTable();
   });
@@ -538,7 +565,7 @@ function delToolRow(idx) {
 }
 function saveTools() {
   var tools = window._toolsData || [];
-  fetch(API+'/api/admin/tools',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tools:tools})})
+  safeFetch(API+'/api/admin/tools',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tools:tools})})
     .then(function(r){return r.json()}).then(function(d){
       if (d.status==='ok') alert('✅ 已保存 ' + tools.length + ' 个工具');
       else alert('❌ 保存失败: '+(d.detail||''));
@@ -552,7 +579,7 @@ function faqMgrView(v) {
     '<button onclick="saveFaq()" style="margin-left:auto;padding:8px 22px;border-radius:8px;border:none;background:var(--o);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">💾 保存</button></div>' +
     '<div class="cb" id="faq-editor"><div class="loading">加载中...</div></div></div>' +
     '<div style="margin-top:12px;text-align:center"><button onclick="addFaqRow()" style="padding:8px 24px;border-radius:8px;border:2px dashed var(--o);background:var(--ol);color:var(--o);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">＋ 添加 FAQ</button></div>';
-  fetch(API + '/api/admin/faq').then(function(r){return r.json()}).then(function(d){
+  safeFetch(API + '/api/admin/faq').then(function(r){return r.json()}).then(function(d){
     window._faqData = d.faq || [];
     renderFaqTable();
   });
@@ -587,7 +614,7 @@ function delFaqRow(idx) {
 }
 function saveFaq() {
   var faq = window._faqData || [];
-  fetch(API+'/api/admin/faq',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({faq:faq})})
+  safeFetch(API+'/api/admin/faq',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({faq:faq})})
     .then(function(r){return r.json()}).then(function(d){
       if (d.status==='ok') alert('✅ 已保存 ' + faq.length + ' 个 FAQ');
       else alert('❌ 保存失败: '+(d.detail||''));
@@ -599,7 +626,7 @@ function feedbacksView(v) {
   v.innerHTML = '<h3>💬 AI 反馈总览</h3>' +
     '<div class="scards" id="fbCards"></div>' +
     '<div class="card"><div class="ch">最近反馈</div><div class="cb" id="fbList"><div class="loading">加载中...</div></div></div>';
-  fetch(API + '/api/admin/feedbacks?days=7').then(function(r){return r.json()}).then(function(d){
+  safeFetch(API + '/api/admin/feedbacks?days=7').then(function(r){return r.json()}).then(function(d){
     document.getElementById('fbCards').innerHTML =
       '<div class="sc"><div class="si gc">👍</div><div><div class="sv">' + (d.useful||0) + '</div><div class="sl">有用反馈</div><div class="st up">✅ ' + (d.useful_rate||0) + '%</div></div></div>' +
       '<div class="sc"><div class="si rc">👎</div><div><div class="sv">' + (d.useless||0) + '</div><div class="sl">无用反馈</div><div class="st">📊 ' + (d.total||0) + ' 条总计</div></div></div>';
@@ -632,7 +659,7 @@ function docsView(v) {
     '<div class="cb" id="docList"><div class="loading">加载中...</div></div></div>' +
     '<div class="card" style="margin-top:18px"><div class="ch">文档预览 <span id="docPreviewTitle" style="font-weight:400;color:#999;font-size:13px"></span></div>' +
     '<div class="cb" id="docPreview" style="max-height:400px;overflow-y:auto"><div style="color:var(--t3);font-size:13px">← 点击左侧文档查看详情</div></div></div>';
-  fetch(API + '/api/documents').then(function(r){return r.json()}).then(function(d){
+  safeFetch(API + '/api/documents').then(function(r){return r.json()}).then(function(d){
     var docs = d.documents || [];
     document.getElementById('docCnt').textContent = '共 ' + docs.length + ' 篇';
     if (!docs.length) {
@@ -655,7 +682,7 @@ function docsView(v) {
 function previewDoc(hash, fname) {
   document.getElementById('docPreviewTitle').textContent = '正在加载: ' + fname;
   document.getElementById('docPreview').innerHTML = '<div class="loading">加载中...</div>';
-  fetch(API + '/api/documents/' + hash).then(function(r){return r.json()}).then(function(d){
+  safeFetch(API + '/api/documents/' + hash).then(function(r){return r.json()}).then(function(d){
     document.getElementById('docPreviewTitle').textContent = fname + ' (' + d.total_chunks + ' chunks)';
     var prev = d.preview || [];
     if (!prev.length) {
@@ -678,7 +705,7 @@ function configHistView(v) {
   v.innerHTML = '<h3>🕐 配置变更历史</h3>' +
     '<div class="card"><div class="ch">版本列表 <span style="font-weight:400;color:#999;font-size:13px">（点击回滚到该版本）</span></div>' +
     '<div class="cb" id="histList"><div class="loading">加载中...</div></div></div>';
-  fetch(API + '/api/admin/config/history').then(function(r){return r.json()}).then(function(d){
+  safeFetch(API + '/api/admin/config/history').then(function(r){return r.json()}).then(function(d){
     var hist = d.history || [];
     if (!hist.length) {
       document.getElementById('histList').innerHTML = '<div class="empty"><div class="icon">📭</div><p>暂无历史版本（保存配置后自动生成）</p></div>';
@@ -701,7 +728,7 @@ function configHistView(v) {
 }
 function rollbackConfig(versionFile) {
   if (!confirm('确定回滚到版本 ' + versionFile + '？\n\n当前配置将被替换。')) return;
-  fetch(API+'/api/admin/config/rollback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:versionFile})})
+  safeFetch(API+'/api/admin/config/rollback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:versionFile})})
     .then(function(r){return r.json()}).then(function(d){
       if (d.status==='ok') alert('✅ 已回滚到 ' + versionFile + '\n工具: ' + d.tools + ' 个, FAQ: ' + d.faq + ' 个');
       else alert('❌ '+(d.detail||'失败'));

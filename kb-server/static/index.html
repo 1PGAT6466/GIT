@@ -80,6 +80,8 @@ body {
 .search-wrap button:hover { background:linear-gradient(135deg,var(--accent2),var(--accent)); box-shadow:0 4px 18px rgba(255,103,0,.3); transform:scale(1.03); }
 .search-wrap button:active { transform:scale(.96); transition:transform .08s ease; }
 .search-wrap button:disabled { background:#d0d0d0; cursor:not-allowed; transform:none; box-shadow:none; opacity:.7; }
+.search-wrap button .btn-spinner { display:none; width:14px; height:14px; border:2px solid rgba(255,255,255,.4); border-top-color:#fff; border-radius:50%; animation:spin .6s linear infinite; margin-right:6px; vertical-align:middle; }
+.search-wrap button:disabled .btn-spinner { display:inline-block; }
 .search-wrap button::after { content:''; position:absolute; top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.2),transparent);transition:left .6s; }
 .search-wrap button:hover::after { left:100%; }
 .modes { display:flex; gap:6px; justify-content:center; margin-top:16px; }
@@ -116,6 +118,8 @@ body {
 .result-card .rc-file span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .result-card .rc-score { font-size:11px; font-weight:600; padding:3px 10px; border-radius:10px; background:var(--accent-light); color:var(--accent); white-space:nowrap; flex-shrink:0; transition:all .25s; }
 .result-card .rc-score.high { background:rgba(7,193,96,.12); color:var(--green); }
+.result-card .rc-score.mid { background:rgba(255,170,0,.12); color:#e68a00; }
+.result-card .rc-score.low { background:rgba(229,57,53,.1); color:var(--red); }
 .result-card:hover .rc-score { transform:scale(1.05); }
 .result-meta { display:flex; gap:8px; margin-bottom:8px; font-size:11px; align-items:center; flex-wrap:wrap; }
 .trust-badge { padding:3px 12px; border-radius:12px; font-weight:600; font-size:11px; }
@@ -239,7 +243,7 @@ body {
 <div class="search-wrap">
 <input id="searchInput" placeholder="输入关键词… 如 VLAN 配置、OEE 指标" onkeydown="if(event.key==='Enter')doSearch()" oninput="toggleClearBtn()">
 <button class="clear-btn" id="clearBtn" onclick="clearSearch()" title="清除">✕</button>
-<button onclick="doSearch()" id="searchBtn">搜索</button>
+<button onclick="doSearch()" id="searchBtn"><span class="btn-spinner"></span>搜索</button>
 </div>
 <div class="modes">
 <button class="mode-btn active" onclick="setMode('search',this)">🔍 关键词</button>
@@ -552,7 +556,7 @@ async function kwSearch(q,p){
       var full=(it.text||it.text_preview||'');
       var preview=full.substring(0,300).replace(/</g,'&lt;').replace(/>/g,'&gt;');
       var score=it.score||0;
-      var scoreClass=score>0.8?'high':'';
+      var scoreClass=score>=0.75?'high':(score>=0.45?'mid':'low');
       // 星级显示（0-5 星）
       var starCount = Math.round(score * 5);
       var starDisplay = '★'.repeat(Math.max(1, starCount)) + '☆'.repeat(Math.max(0, 5 - starCount));
