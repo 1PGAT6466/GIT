@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>宝利根 · 管理面板</title>
+<script src="/admin/chart.umd.js"></script>
+<style>
+:root {
+  --o: #ff6700; --o2: #ff8c42; --ol: #fff4ed;
+  --b: #20a8d8; --bl: #edf7ff;
+  --g: #07c160; --gl: #edfff5;
+  --p: #6f42c1; --pl: #f8f0ff;
+  --r: #e53935; --rl: #fff0f0;
+  --w: #fff; --bg: #f5f6fa; --t: #1a1a1a; --t2: #555; --t3: #999; --bd: #eee;
+  --rds: 14px; --sh: 0 2px 16px rgba(0,0,0,.05);
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--t); min-height: 100vh; }
+
+/* Header */
+.hdr {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(255,255,255,.85); backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--bd);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 32px; height: 60px;
+}
+.logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; color: var(--t); text-decoration: none; }
+.logo .ic { width: 34px; height: 34px; background: linear-gradient(135deg, var(--o), var(--o2)); color: #fff; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+nav { display: flex; gap: 4px; }
+nav a {
+  padding: 8px 18px; font-size: 13.5px; color: var(--t2); text-decoration: none;
+  border-radius: 8px; transition: all .18s; font-weight: 500; white-space: nowrap;
+  display: flex; align-items: center; gap: 6px;
+}
+nav a:hover { color: var(--o); background: var(--ol); }
+nav a.active { color: var(--o); background: var(--ol); font-weight: 600; }
+
+/* Main */
+main { max-width: 1200px; margin: 0 auto; padding: 28px 32px; }
+h3 { font-size: 21px; font-weight: 700; margin-bottom: 22px; padding-left: 14px; border-left: 4px solid var(--o); }
+
+/* Stat Cards */
+.scards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 24px; }
+.sc {
+  background: var(--w); border-radius: var(--rds); padding: 22px 20px; box-shadow: var(--sh);
+  display: flex; align-items: center; gap: 14px; transition: transform .2s;
+}
+.sc:hover { transform: translateY(-2px); }
+.sc .si { width: 46px; height: 46px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.si.oc { background: var(--ol); color: var(--o); }
+.si.bc { background: var(--bl); color: var(--b); }
+.si.gc { background: var(--gl); color: var(--g); }
+.si.pc { background: var(--pl); color: var(--p); }
+.sc .sv { font-size: 26px; font-weight: 700; line-height: 1.2; }
+.sc .sl { font-size: 12px; color: var(--t3); margin-top: 3px; }
+
+/* Card */
+.card { background: var(--w); border-radius: var(--rds); box-shadow: var(--sh); margin-bottom: 18px; overflow: hidden; }
+.ch {
+  padding: 15px 22px; font-weight: 600; font-size: 15px; border-bottom: 1px solid var(--bd);
+  display: flex; align-items: center; gap: 8px;
+}
+.cb { padding: 22px; }
+.cw { height: 280px; }
+.cw canvas { max-height: 280px; }
+
+/* Table */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-size: 11.5px; font-weight: 600; color: var(--t3); padding: 11px 14px; border-bottom: 2px solid var(--bd); text-transform: uppercase; letter-spacing: .5px; }
+td { padding: 12px 14px; border-bottom: 1px solid var(--bd); color: var(--t2); }
+tr:hover td { background: #fafafa; }
+
+/* Tags */
+.tag { font-size: 11px; font-weight: 600; padding: 4px 11px; border-radius: 12px; display: inline-block; }
+.tag-ok { background: var(--gl); color: var(--g); }
+.tag-warn { background: #fff8ed; color: #ffaa00; }
+.tag-err { background: var(--rl); color: var(--r); }
+.tag-info { background: var(--bl); color: var(--b); }
+
+/* Progress */
+.pbar { height: 6px; background: var(--bd); border-radius: 3px; overflow: hidden; margin-top: 10px; }
+.pbar div { height: 100%; border-radius: 3px; transition: width .4s; }
+.loading { text-align: center; padding: 50px; color: var(--t3); }
+.empty { text-align: center; padding: 60px 20px; color: var(--t3); }
+.empty .icon { font-size: 42px; margin-bottom: 12px; opacity: .3; }
+.empty p { font-size: 14px; }
+.empty .hint { font-size: 12px; margin-top: 6px; color: var(--t2); }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+
+@media(max-width: 768px) {
+  .grid2, .grid3 { grid-template-columns: 1fr; }
+  .hdr { padding: 0 16px; }
+  main { padding: 20px 16px; }
+  nav { overflow-x: auto; }
+}
+</style>
+</head>
+<body>
+<header class="hdr">
+  <a class="logo" href="/admin"><span class="ic">▣</span>宝利根管理</a>
+  <nav id="nav"></nav>
+</header>
+<main id="view"></main>
+
+<script>
+var API = window.location.origin;
+var NAV = [
+  { id: 'dashboard', label: '📊 总览', icon: '' },
+  { id: 'upload', label: '📤 上传', icon: '' },
+  { id: 'tasks', label: '⏳ 任务', icon: '' },
+  { id: 'stats', label: '📈 统计', icon: '' },
+  { id: 'server', label: '⚙️ 服务器', icon: '' },
+  { id: 'search', label: '🔍 搜索记录', icon: '' },
+];
+
+function hash() { return location.hash.slice(1) || 'dashboard'; }
+window.onhashchange = render;
+render();
+
+(function buildNav() {
+  var h = '';
+  NAV.forEach(function(n) {
+    h += '<a href="#' + n.id + '" class="' + (hash() === n.id ? 'active' : '') + '">' + n.label + '</a>';
+  });
+  document.getElementById('nav').innerHTML = h;
+  window.onhashchange = function() {
+    var as = document.querySelectorAll('nav a');
+    for (var i = 0; i < as.length; i++) {
+      as[i].className = as[i].getAttribute('href') === '#' + hash() ? 'active' : '';
+    }
+    render();
+  };
+})();
+
+function render() {
+  var v = document.getElementById('view');
+  v.innerHTML = '<div class="loading">加载中...</div>';
+  switch (hash()) {
+    case 'dashboard': dashboard(v); break;
+    case 'upload': uploadView(v); break;
+    case 'tasks': tasksView(v); break;
+    case 'stats': statsView(v); break;
+    case 'server': serverView(v); break;
+    case 'search': searchView(v); break;
+    default: dashboard(v);
+  }
+}
+
+function fmtSize(b) { if (!b) return '0 B'; var k = 1024, s = ['B', 'KB', 'MB', 'GB']; var i = Math.floor(Math.log(b) / Math.log(k)); return (b / Math.pow(k, i)).toFixed(1) + ' ' + s[i]; }
+function fmtTime(t) { return t ? new Date(t).toLocaleString('zh-CN') : '-'; }
+
+/* ============ 总览 ============ */
+function dashboard(v) {
+  v.innerHTML = '<h3>📊 总览面板</h3>' +
+    '<div class="scards" id="dashCards"></div>' +
+    '<div class="grid2">' +
+      '<div class="card"><div class="ch">📈 上传趋势</div><div class="cb cw"><canvas id="cTrend"></canvas></div></div>' +
+      '<div class="card"><div class="ch">📁 格式分布</div><div class="cb cw"><canvas id="cFormat"></canvas></div></div>' +
+    '</div>' +
+    '<div class="card" style="margin-top:18px"><div class="ch">💻 服务器状态</div><div class="cb"><div class="grid3" id="svrStatus"></div></div></div>';
+  initDashboard();
+}
+
+function initDashboard() {
+  fetch(API + '/api/admin/stats').then(function(r) { return r.json(); }).then(function(d) {
+    document.getElementById('dashCards').innerHTML =
+      '<div class="sc"><div class="si oc">📄</div><div><div class="sv">' + (d.totalFiles || 0) + '</div><div class="sl">文档总数</div></div></div>' +
+      '<div class="sc"><div class="si bc">✂️</div><div><div class="sv">' + (d.totalChunks || 0) + '</div><div class="sl">文本片段</div></div></div>' +
+      '<div class="sc"><div class="si gc">💾</div><div><div class="sv">' + fmtSize(d.dbSize || 0) + '</div><div class="sl">数据库大小</div></div></div>' +
+      '<div class="sc"><div class="si pc">📊</div><div><div class="sv">' + (d.totalFiles ? Math.round(d.totalChunks / d.totalFiles) : 0) + '</div><div class="sl">平均片段/文件</div></div></div>';
+
+    var fmt = d.formatDistribution || {};
+    if (Object.keys(fmt).length) {
+      new Chart(document.getElementById('cFormat'), {
+        type: 'doughnut',
+        data: {
+          labels: Object.keys(fmt),
+          datasets: [{ data: Object.values(fmt), backgroundColor: ['#ff6700', '#20a8d8', '#07c160', '#ffaa00', '#6f42c1', '#e53935', '#888'], borderWidth: 0 }]
+        },
+        options: { plugins: { legend: { position: 'right', labels: { padding: 14, usePointStyle: true } } } }
+      });
+    }
+  });
+
+  fetch(API + '/api/admin/upload-trend').then(function(r) { return r.json(); }).then(function(d) {
+    if (!d || !d.length) return;
+    new Chart(document.getElementById('cTrend'), {
+      type: 'line',
+      data: {
+        labels: d.map(function(i) { return i.date; }),
+        datasets: [{ label: '上传', data: d.map(function(i) { return i.count; }), borderColor: '#ff6700', backgroundColor: 'rgba(255,103,0,.08)', fill: true, tension: .35, pointRadius: 4, pointBackgroundColor: '#ff6700', borderWidth: 2.5 }]
+      },
+      options: { plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: '#f0f0f0' } } } }
+    });
+  });
+
+  fetch(API + '/api/admin/server-status').then(function(r) { return r.json(); }).then(function(d) {
+    document.getElementById('svrStatus').innerHTML =
+      '<div><div style="font-size:12px;color:#999;margin-bottom:6px">CPU</div><div style="font-size:26px;font-weight:700;margin-bottom:6px">' + (d.cpu || 0) + '<span style="font-size:14px;color:#999">%</span></div><div class="pbar"><div style="width:' + (d.cpu || 0) + '%;background:var(--o)"></div></div></div>' +
+      '<div><div style="font-size:12px;color:#999;margin-bottom:6px">内存</div><div style="font-size:26px;font-weight:700;margin-bottom:6px">' + (d.memory || 0) + '<span style="font-size:14px;color:#999">%</span></div><div class="pbar"><div style="width:' + (d.memory || 0) + '%;background:var(--g)"></div></div></div>' +
+      '<div><div style="font-size:12px;color:#999;margin-bottom:6px">磁盘</div><div style="font-size:26px;font-weight:700;margin-bottom:6px">' + (d.disk || 0) + '<span style="font-size:14px;color:#999">%</span></div><div class="pbar"><div style="width:' + (d.disk || 0) + '%;background:var(--b)"></div></div></div>';
+  });
+}
+
+/* ============ 上传监控 ============ */
+function uploadView(v) {
+  v.innerHTML = '<h3>📤 上传记录</h3><div class="card"><div class="ch">最近活动</div><div class="cb" id="ulist"><div class="loading">加载中...</div></div></div>';
+  refreshUploads();
+}
+
+function refreshUploads() {
+  fetch(API + '/api/admin/recent-activities').then(function(r) { return r.json(); }).then(function(d) {
+    var items = d.filter(function(i) { return i.type === 'upload' || i.action === 'upload'; });
+    if (!items.length) {
+      document.getElementById('ulist').innerHTML = '<div class="empty"><div class="icon">📭</div><p>暂无上传记录</p></div>';
+      return;
+    }
+    var h = '<table><thead><tr><th>文件名</th><th>格式</th><th>状态</th><th>时间</th></tr></thead><tbody>';
+    items.forEach(function(i) {
+      var st = i.status || '完成', c = 'tag-info';
+      if (st === 'completed' || st === '完成') c = 'tag-ok';
+      else if (st === 'failed' || st === '失败') c = 'tag-err';
+      else if (st === 'processing' || st === '处理中') c = 'tag-warn';
+      h += '<tr><td style="font-weight:500">' + (i.filename || i.file_name || '未知') + '</td>' +
+        '<td><span class="tag tag-info">' + (i.fileType || '未知') + '</span></td>' +
+        '<td><span class="tag ' + c + '">' + st + '</span></td>' +
+        '<td style="font-size:12px;color:#999">' + fmtTime(i.timestamp || i.created_at) + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    document.getElementById('ulist').innerHTML = h;
+  });
+}
+
+/* ============ 任务队列 (新增) ============ */
+function tasksView(v) {
+  v.innerHTML = '<h3>⏳ 处理任务</h3><div class="card"><div class="ch">后台任务</div><div class="cb" id="tlist"><div class="loading">加载中...</div></div></div>';
+  refreshTasks();
+  setInterval(function() {
+    if (hash() === 'tasks') refreshTasks();
+  }, 3000);
+}
+
+function refreshTasks() {
+  fetch(API + '/api/admin/recent-activities').then(function(r) { return r.json(); }).then(function(d) {
+    var items = d.filter(function(i) { return i.status === 'processing' || i.status === 'queued'; });
+    if (!items.length) {
+      document.getElementById('tlist').innerHTML = '<div class="empty"><div class="icon">✅</div><p>暂无进行中的任务</p></div>';
+      return;
+    }
+    var h = '<table><thead><tr><th>文件名</th><th>状态</th><th>进度</th></tr></thead><tbody>';
+    items.forEach(function(i) {
+      h += '<tr><td style="font-weight:500">' + (i.filename || i.file_name || '未知') + '</td>' +
+        '<td><span class="tag tag-warn">处理中</span></td>' +
+        '<td><div class="pbar"><div style="width:' + (i.progress || 0) + '%;background:var(--o)"></div></div></td></tr>';
+    });
+    h += '</tbody></table>';
+    document.getElementById('tlist').innerHTML = h;
+  });
+}
+
+/* ============ 数据统计 ============ */
+function statsView(v) {
+  v.innerHTML = '<h3>📈 数据统计</h3>' +
+    '<div class="scards" id="statCards"></div>' +
+    '<div class="grid2">' +
+      '<div class="card"><div class="ch">📁 格式分布</div><div class="cb cw"><canvas id="cFmt2"></canvas></div></div>' +
+      '<div class="card"><div class="ch">🔍 搜索量</div><div class="cb cw"><canvas id="cSearch"></canvas></div></div>' +
+    '</div>' +
+    '<div class="card" style="margin-top:18px"><div class="ch">📋 格式明细</div><div class="cb" id="fmtDetail"></div></div>';
+  initStats();
+}
+
+function initStats() {
+  fetch(API + '/api/admin/stats').then(function(r) { return r.json(); }).then(function(d) {
+    document.getElementById('statCards').innerHTML =
+      '<div class="sc"><div class="si oc">📄</div><div><div class="sv">' + (d.totalFiles || 0) + '</div><div class="sl">总文件数</div></div></div>' +
+      '<div class="sc"><div class="si bc">✂️</div><div><div class="sv">' + (d.totalChunks || 0) + '</div><div class="sl">总片段数</div></div></div>' +
+      '<div class="sc"><div class="si gc">💾</div><div><div class="sv">' + fmtSize(d.dbSize || 0) + '</div><div class="sl">数据库大小</div></div></div>' +
+      '<div class="sc"><div class="si pc">📦</div><div><div class="sv">' + Object.keys(d.formatDistribution || {}).length + '</div><div class="sl">文件类型数</div></div></div>';
+
+    var fmt = d.formatDistribution || {};
+    if (Object.keys(fmt).length) {
+      new Chart(document.getElementById('cFmt2'), {
+        type: 'doughnut',
+        data: { labels: Object.keys(fmt), datasets: [{ data: Object.values(fmt), backgroundColor: ['#ff6700', '#20a8d8', '#07c160', '#ffaa00', '#6f42c1', '#e53935'], borderWidth: 0 }] },
+        options: { plugins: { legend: { position: 'right', labels: { padding: 14, usePointStyle: true } } } }
+      });
+    }
+
+    var fd = '';
+    Object.entries(fmt).forEach(function(e) {
+      fd += '<span style="display:inline-block;background:#f8f8f8;border-radius:10px;padding:8px 16px;margin:4px 6px 4px 0"><b style="color:var(--o)">' + e[0].toUpperCase() + '</b> ' + e[1] + ' 个</span>';
+    });
+    document.getElementById('fmtDetail').innerHTML = fd || '<div class="empty"><p>暂无数据</p></div>';
+  });
+
+  fetch(API + '/api/admin/ai-search-logs').then(function(r) { return r.json(); }).then(function(d) {
+    var daily = {};
+    (d || []).forEach(function(l) {
+      var dt = new Date(l.timestamp || l.created_at).toLocaleDateString('zh-CN');
+      daily[dt] = (daily[dt] || 0) + 1;
+    });
+    var dd = Object.entries(daily).slice(-7);
+    if (dd.length) {
+      new Chart(document.getElementById('cSearch'), {
+        type: 'bar',
+        data: { labels: dd.map(function(x) { return x[0]; }), datasets: [{ data: dd.map(function(x) { return x[1]; }), backgroundColor: '#ff6700', borderRadius: 6, borderWidth: 0 }] },
+        options: { plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: '#f0f0f0' } } } }
+      });
+    }
+  });
+}
+
+/* ============ 服务器监控 ============ */
+function serverView(v) {
+  var tid = 'svr' + Date.now();
+  v.innerHTML = '<h3>⚙️ 服务器监控</h3>' +
+    '<div class="scards" id="' + tid + '_cards"></div>' +
+    '<div class="grid2">' +
+      '<div class="card"><div class="ch">CPU 趋势</div><div class="cb cw"><canvas id="' + tid + '_cc"></canvas></div></div>' +
+      '<div class="card"><div class="ch">内存趋势</div><div class="cb cw"><canvas id="' + tid + '_mc"></canvas></div></div>' +
+    '</div>';
+  var cpuH = [], memH = [];
+  function poll() {
+    fetch(API + '/api/admin/server-status').then(function(r) { return r.json(); }).then(function(d) {
+      var t = new Date().toLocaleTimeString('zh-CN');
+      cpuH.push({ time: t, value: d.cpu || 0 }); if (cpuH.length > 30) cpuH.shift();
+      memH.push({ time: t, value: d.memory || 0 }); if (memH.length > 30) memH.shift();
+
+      document.getElementById(tid + '_cards').innerHTML =
+        '<div class="sc"><div class="si oc">⚙️</div><div><div class="sv">' + (d.cpu || 0) + '<span style="font-size:15px;color:#999">%</span></div><div class="sl">CPU 使用率</div><div class="pbar"><div style="width:' + (d.cpu || 0) + '%;background:var(--o)"></div></div></div></div>' +
+        '<div class="sc"><div class="si gc">🧠</div><div><div class="sv">' + (d.memory || 0) + '<span style="font-size:15px;color:#999">%</span></div><div class="sl">内存 共计 ' + (d.memoryTotal ? (d.memoryTotal / 1073741824).toFixed(1) + ' GB' : '--') + '</div><div class="pbar"><div style="width:' + (d.memory || 0) + '%;background:var(--g)"></div></div></div></div>' +
+        '<div class="sc"><div class="si bc">💿</div><div><div class="sv">' + (d.disk || 0) + '<span style="font-size:15px;color:#999">%</span></div><div class="sl">磁盘 共计 ' + (d.diskTotal ? (d.diskTotal / 1073741824).toFixed(1) + ' GB' : '--') + '</div><div class="pbar"><div style="width:' + (d.disk || 0) + '%;background:var(--b)"></div></div></div></div>' +
+        '<div class="sc"><div class="si pc">⏱️</div><div><div class="sv" style="font-size:20px">' + (d.uptime || '--') + '</div><div class="sl">运行时长</div></div></div>';
+
+      if (window[tid + '_cc']) { window[tid + '_cc'].destroy(); }
+      if (window[tid + '_mc']) { window[tid + '_mc'].destroy(); }
+      window[tid + '_cc'] = new Chart(document.getElementById(tid + '_cc'), {
+        type: 'line', data: { labels: cpuH.map(function(x) { return x.time; }), datasets: [{ data: cpuH.map(function(x) { return x.value; }), borderColor: '#ff6700', borderWidth: 2, fill: false, tension: .3, pointRadius: 0 }] },
+        options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { beginAtZero: true, max: 100, grid: { color: '#f0f0f0' } } } }
+      });
+      window[tid + '_mc'] = new Chart(document.getElementById(tid + '_mc'), {
+        type: 'line', data: { labels: memH.map(function(x) { return x.time; }), datasets: [{ data: memH.map(function(x) { return x.value; }), borderColor: '#07c160', borderWidth: 2, fill: false, tension: .3, pointRadius: 0 }] },
+        options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { beginAtZero: true, max: 100, grid: { color: '#f0f0f0' } } } }
+      });
+    });
+  }
+  poll();
+  setInterval(poll, 15000);
+}
+
+/* ============ AI 搜索记录 ============ */
+function searchView(v) {
+  v.innerHTML = '<h3>🔍 AI 搜索记录</h3><div class="card"><div class="ch">搜索记录 <span id="scnt" style="font-weight:400;color:#999;font-size:13px"></span></div><div class="cb" id="slist"><div class="loading">加载中...</div></div></div>';
+  fetch(API + '/api/admin/ai-search-logs').then(function(r) { return r.json(); }).then(function(d) {
+    var logs = Array.isArray(d) ? d : [];
+    document.getElementById('scnt').textContent = '共 ' + logs.length + ' 条';
+    if (!logs.length) {
+      document.getElementById('slist').innerHTML = '<div class="empty"><div class="icon">🔍</div><p>暂无搜索记录</p></div>';
+      return;
+    }
+    var h = '<table><thead><tr><th style="width:170px">时间</th><th>搜索内容</th><th style="width:90px">类型</th></tr></thead><tbody>';
+    logs.forEach(function(l) {
+      h += '<tr><td style="font-size:12px;color:#999">' + fmtTime(l.timestamp || l.created_at) + '</td>' +
+        '<td style="font-weight:500">' + (l.query || l.question || '--') + '</td>' +
+        '<td><span class="tag tag-info">' + (l.type || l.mode || '搜索') + '</span></td></tr>';
+    });
+    h += '</tbody></table>';
+    document.getElementById('slist').innerHTML = h;
+  });
+}
+</script>
+</body>
+</html>
