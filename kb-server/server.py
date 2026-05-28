@@ -1275,9 +1275,11 @@ def _classify_text(text: str) -> str:
 
 
 # ============ LIFECYCLE ============
-@app.on_event("startup")
-async def startup():
-    """预热模型和数据库"""
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """预热模型和数据库（v3.7: 使用 lifespan 替代已弃用的 on_event）"""
     try:
         global _ready
         _ready = False
@@ -1297,6 +1299,16 @@ async def startup():
         print(f"[OK] 每日备份调度器已启动（凌晨2点）")
     except Exception as e:
         print(f"[WARN] 启动延迟初始化失败: {e}")
+    yield
+    # Shutdown: 保存索引后关闭
+    print("[INFO] 服务关闭中，正在保存索引…")
+    try:
+        _save_index()
+    except Exception as e:
+        print(f"[WARN] 关闭时保存索引失败: {e}")
+
+# v3.7: 关联 lifespan 到 app（定义在 app 初始化之后）
+app.router.lifespan_context = lifespan
 
 
 # ============ MIDDLEWARE ============
@@ -1577,7 +1589,7 @@ async def search(
     top_k: int = Query(default=10, ge=1, le=50),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=50),
-    lang: str = Query(default="auto", regex="^(auto|zh|en)$"),
+    lang: str = Query(default="auto", pattern="^(auto|zh|en)$"),
     request: Request = None,
 ):
     """
@@ -2196,15 +2208,11 @@ async def admin_server_status():
     """
     try:
         import psutil
-        import concurrent.futures
 
         loop = asyncio.get_event_loop()
 
-        # CPU 采样在独立线程中执行（interval=1 会阻塞 1 秒）
-        cpu_percent = await loop.run_in_executor(
-            concurrent.futures.ThreadPoolExecutor(max_workers=1),
-            lambda: psutil.cpu_percent(interval=1)
-        )
+        # v3.7: 复用默认 executor，避免每次请求创建新线程池（内存泄漏修复）
+        cpu_percent = await loop.run_in_executor(None, lambda: psutil.cpu_percent(interval=1))
 
         # 内存使用
         memory = psutil.virtual_memory()
@@ -2633,4 +2641,4 @@ async def reset_collection(request: Request):
 if __name__ == "__main__":
     import uvicorn
     max_body = int(os.getenv("KB_MAX_FILE_MB", "200")) * 1024 * 1024
-    uvicorn.run(app, host=HOST, port=PORT, log_level="info", limit_max_requests=10000, timeout_keep_alive=300, limit_concurrency=50)
+    uvicorn.run(app, host=HOST, port=PORT, log_level="info", limit_max_requests=5000, timeout_keep_alive=120, limit_concurrency=30, backlog=128, h11_max_incomplete_event_size=16384)

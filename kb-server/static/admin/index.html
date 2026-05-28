@@ -50,7 +50,9 @@ h3 { font-size: 21px; font-weight: 700; margin-bottom: 22px; padding-left: 14px;
   background: var(--w); border-radius: var(--rds); padding: 22px 20px; box-shadow: var(--sh);
   display: flex; align-items: center; gap: 14px; transition: transform .2s;
 }
-.sc:hover { transform: translateY(-2px); }
+.sc:hover { transform: translateY(-3px); box-shadow: 0 6px 24px rgba(0,0,0,.1); }
+.sc .sv { transition: color .25s ease; }
+.sc:hover .sv { color: var(--o); }
 .sc .si { width: 46px; height: 46px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
 .si.oc { background: var(--ol); color: var(--o); }
 .si.bc { background: var(--bl); color: var(--b); }
@@ -84,7 +86,9 @@ th { text-align: left; font-size: 11.5px; font-weight: 600; color: var(--t3); pa
 td { padding: 12px 14px; border-bottom: 1px solid var(--bd); color: var(--t2); }
 tr:nth-child(even) td { background: #fafbfc; }
 tr td { transition: background .2s ease; }
-tr:hover td { background: #f0f3f7; transform: translateX(2px); transition: all .25s ease; }
+tr:hover td { background: #f0f3f7; }
+tbody tr { transition: transform .15s ease; }
+tbody tr:hover { transform: translateX(4px); }
 
 /* Tags */
 .tag { font-size: 11px; font-weight: 600; padding: 4px 11px; border-radius: 12px; display: inline-block; }
