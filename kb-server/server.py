@@ -2369,31 +2369,44 @@ def _load_config() -> dict:
     return {"tools": TOOLS_DATA, "faq": FAQ_DATA}
 
 def _save_config(config: dict):
-    """保存配置到磁盘，同时保留历史版本"""
-    os.makedirs(DB_PATH, exist_ok=True)
-    # 如果旧配置存在且不同，先归档
-    if os.path.exists(_CONFIG_PATH):
+    """保存配置到磁盘，同时保留历史版本（v3.5: 增加磁盘满/权限异常保护）"""
+    try:
+        os.makedirs(DB_PATH, exist_ok=True)
+        # 如果旧配置存在且不同，先归档
+        if os.path.exists(_CONFIG_PATH):
+            try:
+                with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+                    old = f.read()
+                new = json.dumps(config, ensure_ascii=False, indent=2)
+                if old != new:
+                    os.makedirs(_CONFIG_HISTORY_DIR, exist_ok=True)
+                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    hist_path = os.path.join(_CONFIG_HISTORY_DIR, f"config_{ts}.json")
+                    with open(hist_path, "w", encoding="utf-8") as f:
+                        f.write(old)
+                    # 保留最近 50 个历史版本
+                    try:
+                        hfiles = sorted(os.listdir(_CONFIG_HISTORY_DIR), reverse=True)
+                        for fname in hfiles[50:]:
+                            os.remove(os.path.join(_CONFIG_HISTORY_DIR, fname))
+                    except Exception:
+                        pass  # 清理失败不影响主流程
+            except Exception:
+                pass
+        # 原子写入：先写临时文件再 rename
+        tmp_path = _CONFIG_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, _CONFIG_PATH)  # 原子替换
+    except Exception as e:
+        print(f"[ERROR] 保存配置失败: {e}")
+        # 清理临时文件
         try:
-            with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
-                old = f.read()
-            new = json.dumps(config, ensure_ascii=False, indent=2)
-            if old != new:
-                os.makedirs(_CONFIG_HISTORY_DIR, exist_ok=True)
-                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                hist_path = os.path.join(_CONFIG_HISTORY_DIR, f"config_{ts}.json")
-                with open(hist_path, "w", encoding="utf-8") as f:
-                    f.write(old)
-                # 保留最近 50 个历史版本
-                try:
-                    hfiles = sorted(os.listdir(_CONFIG_HISTORY_DIR), reverse=True)
-                    for fname in hfiles[50:]:
-                        os.remove(os.path.join(_CONFIG_HISTORY_DIR, fname))
-                except Exception:
-                    pass  # 清理失败不影响主流程
+            tmp = _CONFIG_PATH + ".tmp"
+            if os.path.exists(tmp):
+                os.remove(tmp)
         except Exception:
             pass
-    with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(config, f, ensure_ascii=False, indent=2)
 
 
 # ============ 管理面板扩展 API ============

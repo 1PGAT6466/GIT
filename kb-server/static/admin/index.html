@@ -385,9 +385,12 @@ function initStats() {
 
 /* ============ 服务器监控 ============ */
 var _svrTimer = null;
+var _svrCharts = {};  // 按 tid 管理 chart 实例，防止变量冲突
 function serverView(v) {
   if (_svrTimer) { clearInterval(_svrTimer); _svrTimer = null; }
   var tid = 'svr' + Date.now();
+  // 初始化该 tid 的 chart 存储
+  _svrCharts[tid] = { cc: null, mc: null };
   v.innerHTML = '<h3>⚙️ 服务器监控</h3>' +
     '<div class="scards" id="' + tid + '_cards"></div>' +
     '<div class="grid2">' +
@@ -396,6 +399,9 @@ function serverView(v) {
     '</div>';
   var cpuH = [], memH = [];
   function poll() {
+    var ccEl = document.getElementById(tid + '_cc');
+    var mcEl = document.getElementById(tid + '_mc');
+    if (!ccEl || !mcEl) { return; }  // DOM 已移出则停止
     fetch(API + '/api/admin/server-status').then(function(r) { return r.json(); }).then(function(d) {
       var t = new Date().toLocaleTimeString('zh-CN');
       cpuH.push({ time: t, value: d.cpu || 0 }); if (cpuH.length > 30) cpuH.shift();
@@ -407,16 +413,21 @@ function serverView(v) {
         '<div class="sc"><div class="si bc">💿</div><div><div class="sv">' + (d.disk || 0) + '<span style="font-size:15px;color:#999">%</span></div><div class="sl">磁盘 共计 ' + (d.diskTotal ? (d.diskTotal / 1073741824).toFixed(1) + ' GB' : '--') + '</div><div class="pbar"><div style="width:' + (d.disk || 0) + '%;background:var(--b)"></div></div></div></div>' +
         '<div class="sc"><div class="si pc">⏱️</div><div><div class="sv" style="font-size:20px">' + (d.uptime || '--') + '</div><div class="sl">运行时长</div></div></div>';
 
-      if (window[tid + '_cc']) { window[tid + '_cc'].destroy(); }
-      if (window[tid + '_mc']) { window[tid + '_mc'].destroy(); }
-      window[tid + '_cc'] = new Chart(document.getElementById(tid + '_cc'), {
-        type: 'line', data: { labels: cpuH.map(function(x) { return x.time; }), datasets: [{ data: cpuH.map(function(x) { return x.value; }), borderColor: '#ff6700', borderWidth: 2, fill: false, tension: .3, pointRadius: 0 }] },
-        options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { beginAtZero: true, max: 100, grid: { color: '#f0f0f0' } } } }
-      });
-      window[tid + '_mc'] = new Chart(document.getElementById(tid + '_mc'), {
-        type: 'line', data: { labels: memH.map(function(x) { return x.time; }), datasets: [{ data: memH.map(function(x) { return x.value; }), borderColor: '#07c160', borderWidth: 2, fill: false, tension: .3, pointRadius: 0 }] },
-        options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { beginAtZero: true, max: 100, grid: { color: '#f0f0f0' } } } }
-      });
+      // 安全销毁旧 chart
+      if (_svrCharts[tid] && _svrCharts[tid].cc) { _svrCharts[tid].cc.destroy(); _svrCharts[tid].cc = null; }
+      if (_svrCharts[tid] && _svrCharts[tid].mc) { _svrCharts[tid].mc.destroy(); _svrCharts[tid].mc = null; }
+      if (ccEl) {
+        _svrCharts[tid].cc = new Chart(ccEl, {
+          type: 'line', data: { labels: cpuH.map(function(x) { return x.time; }), datasets: [{ data: cpuH.map(function(x) { return x.value; }), borderColor: '#ff6700', borderWidth: 2, fill: false, tension: .3, pointRadius: 0 }] },
+          options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { beginAtZero: true, max: 100, grid: { color: '#f0f0f0' } } } }
+        });
+      }
+      if (mcEl) {
+        _svrCharts[tid].mc = new Chart(mcEl, {
+          type: 'line', data: { labels: memH.map(function(x) { return x.time; }), datasets: [{ data: memH.map(function(x) { return x.value; }), borderColor: '#07c160', borderWidth: 2, fill: false, tension: .3, pointRadius: 0 }] },
+          options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { beginAtZero: true, max: 100, grid: { color: '#f0f0f0' } } } }
+        });
+      }
     });
   }
   poll();
