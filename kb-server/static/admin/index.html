@@ -59,8 +59,10 @@ h3 { font-size: 21px; font-weight: 700; margin-bottom: 22px; padding-left: 14px;
 .si.gc { background: var(--gl); color: var(--g); }
 .si.pc { background: var(--pl); color: var(--p); }
 .si.rc { background: var(--rl); color: var(--r); }
-.sc .sv { font-size: 26px; font-weight: 700; line-height: 1.2; }
+.sc .sv { font-size: 26px; font-weight: 700; line-height: 1.2; transition: all .3s cubic-bezier(.4,0,.2,1); }
 .sc .sl { font-size: 12px; color: var(--t3); margin-top: 3px; }
+.sc:hover { transform: translateY(-3px); box-shadow: 0 6px 24px rgba(0,0,0,.1); }
+.sc:hover .sv { color: var(--o); transform: scale(1.05); }
 
 /* Card */
 .card { background: var(--w); border-radius: var(--rds); box-shadow: var(--sh); margin-bottom: 18px; overflow: hidden; }
@@ -87,8 +89,19 @@ td { padding: 12px 14px; border-bottom: 1px solid var(--bd); color: var(--t2); }
 tr:nth-child(even) td { background: #fafbfc; }
 tr td { transition: background .2s ease; }
 tr:hover td { background: #f0f3f7; }
-tbody tr { transition: transform .15s ease; }
+tbody tr { transition: transform .15s ease; animation: rowFadeIn .4s ease both; }
 tbody tr:hover { transform: translateX(4px); }
+@keyframes rowFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+tbody tr:nth-child(1) { animation-delay: 0s; }
+tbody tr:nth-child(2) { animation-delay: .03s; }
+tbody tr:nth-child(3) { animation-delay: .06s; }
+tbody tr:nth-child(4) { animation-delay: .09s; }
+tbody tr:nth-child(5) { animation-delay: .12s; }
+tbody tr:nth-child(6) { animation-delay: .15s; }
+tbody tr:nth-child(7) { animation-delay: .18s; }
+tbody tr:nth-child(8) { animation-delay: .21s; }
+tbody tr:nth-child(9) { animation-delay: .24s; }
+tbody tr:nth-child(10) { animation-delay: .27s; }
 
 /* Tags */
 .tag { font-size: 11px; font-weight: 600; padding: 4px 11px; border-radius: 12px; display: inline-block; }
@@ -166,9 +179,12 @@ render();
 })();
 
 function render() {
-  // 清理之前页面的定时器
+  // 清理之前页面的定时器和图表
   if (_tasksTimer) { clearInterval(_tasksTimer); _tasksTimer = null; }
   if (_svrTimer) { clearInterval(_svrTimer); _svrTimer = null; }
+  // 清理 dashboard/stats 页面的 chart 实例
+  _dashboardCharts.forEach(function(c) { try { c.destroy(); } catch(e) {} });
+  _dashboardCharts = [];
   var v = document.getElementById('view');
   v.innerHTML = '<div class="loading">加载中...</div>';
   switch (hash()) {
@@ -356,11 +372,12 @@ function initStats() {
 
     var fmt = d.formatDistribution || {};
     if (Object.keys(fmt).length) {
-      new Chart(document.getElementById('cFmt2'), {
+      var fmtChart2 = new Chart(document.getElementById('cFmt2'), {
         type: 'doughnut',
         data: { labels: Object.keys(fmt), datasets: [{ data: Object.values(fmt), backgroundColor: ['#ff6700', '#20a8d8', '#07c160', '#ffaa00', '#6f42c1', '#e53935'], borderWidth: 0 }] },
         options: { plugins: { legend: { position: 'right', labels: { padding: 14, usePointStyle: true } } } }
       });
+      _dashboardCharts.push(fmtChart2);
     }
 
     var fd = '';
@@ -378,11 +395,12 @@ function initStats() {
     });
     var dd = Object.entries(daily).slice(-7);
     if (dd.length) {
-      new Chart(document.getElementById('cSearch'), {
+      var searchChart = new Chart(document.getElementById('cSearch'), {
         type: 'bar',
         data: { labels: dd.map(function(x) { return x[0]; }), datasets: [{ data: dd.map(function(x) { return x[1]; }), backgroundColor: '#ff6700', borderRadius: 6, borderWidth: 0 }] },
         options: { plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: '#f0f0f0' } } } }
       });
+      _dashboardCharts.push(searchChart);
     }
   });
 }
