@@ -24,6 +24,7 @@ import threading
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -85,6 +86,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
 )
+# GZip 压缩：减少 JSON 响应体积 60-80%
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # Static files
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
@@ -138,6 +141,7 @@ _metadata: list[dict] = []  # 元数据列表，与索引行一一对应
 _collection: Optional[str] = None
 _ready = False
 _meta_lock = threading.Lock()  # 元数据写锁
+_index_lock = threading.Lock()  # FAISS 索引写入锁（v3.0+）
 
 
 # ============ MODELS ============
@@ -149,6 +153,9 @@ class StatsResponse(BaseModel):
     total_chunks: int
     uptime_seconds: float
     version: str = "2.0.0"
+    total_tools: int = 0
+    total_faq: int = 0
+    feedback_count_today: int = 0
 
 
 class SearchResult(BaseModel):
@@ -188,6 +195,83 @@ class ConfirmRequest(BaseModel):
     file_name: str
     chunks: list[dict]
 
+
+class FeedbackRequest(BaseModel):
+    """AI 回答反馈"""
+    query: str = ""
+    answer_preview: str = ""
+    useful: bool = True
+    timestamp: str = ""
+
+
+# ============ 可配置数据（工具列表 + 常见问题） ============
+# 这些数据原先硬编码在前端 index.html 中，现在集中管理
+
+TOOLS_DATA = [
+    {"id": "vpn", "name": "VPN 连接", "icon": "🔒", "category": "网络",
+     "url": "#vpn", "desc": "请联系 IT 获取 VPN 客户端与配置", "available": False},
+    {"id": "email", "name": "企业邮箱", "icon": "📟", "category": "办公",
+     "url": "https://mail.polygon.com", "desc": "宝利根企业邮箱入口", "available": True},
+    {"id": "oa", "name": "OA 系统", "icon": "🗚", "category": "办公",
+     "url": "#oa", "desc": "审批、考勤、公告", "available": True},
+    {"id": "nps", "name": "NPS 认证", "icon": "🛡️", "category": "安全",
+     "url": "#nps", "desc": "802.1X 网络准入认证", "available": True},
+    {"id": "fileshare", "name": "文件共享", "icon": "📧", "category": "办公",
+     "url": "#fileshare", "desc": "部门共享文件夹", "available": True},
+    {"id": "printer", "name": "网络打印", "icon": "🖨️", "category": "办公",
+     "url": "#printer", "desc": "打印机驱动与配置", "available": True},
+    {"id": "phone", "name": "通讯录", "icon": "📓", "category": "办公",
+     "url": "#phone", "desc": "全员通讯录查询", "available": True},
+    {"id": "ithelp", "name": "IT 工单", "icon": "🎿", "category": "IT",
+     "url": "#ithelp", "desc": "报修 / 账号申请", "available": True},
+    {"id": "kms", "name": "KMS 激活", "icon": "🔑", "category": "IT",
+     "url": "#kms", "desc": "Windows/Office 批量激活", "available": True},
+]
+
+FAQ_DATA = [
+    {"id": 1, "category": "网络建设",
+     "question": "公司网络升级改造方案中，核心交换机和接入层的设备型号是什么？",
+     "keywords": ["网络", "交换机", "方案"]},
+    {"id": 2, "category": "网络建设",
+     "question": "公司内部的 VLAN 划分方案是怎样的？各 VLAN 对应的网段是什么？",
+     "keywords": ["VLAN", "网段", "划分"]},
+    {"id": 3, "category": "网络建设",
+     "question": "网络改造方案的总体预算和分项费用是多少？",
+     "keywords": ["预算", "费用", "改造"]},
+    {"id": 4, "category": "网络建设",
+     "question": "NPS 域控认证的配置流程是怎样的？",
+     "keywords": ["NPS", "域控", "认证", "802.1X"]},
+    {"id": 5, "category": "IT资产",
+     "question": "公司目前有哪些软件授权？各软件的版本和使用部门是什么？",
+     "keywords": ["软件", "授权", "版本"]},
+    {"id": 6, "category": "IT资产",
+     "question": "员工设备的账户规范要求是什么？电脑命名规则是怎样的？",
+     "keywords": ["账户", "命名", "规范"]},
+    {"id": 7, "category": "IT资产",
+     "question": "公司各员工的 IP 地址和对应的电脑信息是什么？",
+     "keywords": ["IP", "电脑", "员工"]},
+    {"id": 8, "category": "采购合同",
+     "question": "网络设备的采购合同中，供货清单包含哪些设备？",
+     "keywords": ["采购", "设备", "供货"]},
+    {"id": 9, "category": "采购合同",
+     "question": "康成报价中综合布线的总金额和明细有哪些？",
+     "keywords": ["康成", "布线", "报价"]},
+    {"id": 10, "category": "采购合同",
+     "question": "办公用品及耗材采购合同的付款方式和交货条款是什么？",
+     "keywords": ["付款", "交货", "耗材"]},
+    {"id": 11, "category": "公司架构",
+     "question": "公司的组织架构是怎样的？各部门的主要职责是什么？",
+     "keywords": ["架构", "部门", "职责"]},
+    {"id": 12, "category": "自动化",
+     "question": "Mini-FakraTE 自动化产线的 CT 要求和 OEE 目标是多少？",
+     "keywords": ["CT", "OEE", "产线", "自动化"]},
+    {"id": 13, "category": "自动化",
+     "question": "Mini-FakraTE 产线适用哪些产品型号？",
+     "keywords": ["Mini-Fakra", "产品", "型号"]},
+    {"id": 14, "category": "标准件",
+     "question": "标准件表中线轨的型号、品牌和规格是什么？",
+     "keywords": ["线轨", "标准件", "品牌"]},
+]
 
 # ============ HELPERS ============
 def _get_embedder() -> SentenceTransformer:
@@ -240,9 +324,10 @@ def _load_index():
 
 
 def _save_index():
-    """持久化 FAISS 索引和元数据到磁盘"""
-    if _index is not None:
-        faiss.write_index(_index, _faiss_index_path())
+    """持久化 FAISS 索引和元数据到磁盘（v3.0: 写入加锁防竞态）"""
+    with _index_lock:
+        if _index is not None:
+            faiss.write_index(_index, _faiss_index_path())
     with _meta_lock:
         with open(_faiss_meta_path(), "w", encoding="utf-8") as f:
             json.dump(_metadata, f, ensure_ascii=False)
@@ -1216,13 +1301,22 @@ async def startup():
 
 # ============ MIDDLEWARE ============
 @app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    """为每个请求添加唯一 ID，写入 response header"""
+    req_id = request.headers.get("X-Request-ID", uuid.uuid4().hex[:12])
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = req_id
+    return response
+
+@app.middleware("http")
 async def log_requests(request: Request, call_next):
     """记录所有请求"""
+    req_id = request.headers.get("X-Request-ID", "-")
     start = time.time()
     response = await call_next(request)
     elapsed = time.time() - start
     print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] "
-          f"{request.method} {request.url.path} → {response.status_code} ({elapsed:.3f}s)")
+          f"[{req_id}] {request.method} {request.url.path} → {response.status_code} ({elapsed:.3f}s)")
     return response
 
 
@@ -1235,11 +1329,51 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+# ============ RATE LIMITER ============
+_RATE_LIMIT_WINDOW = 60  # 秒
+_RATE_LIMIT_MAX = 120    # 每窗口最大请求数
+_rate_limit_store: dict = {}  # IP -> (window_start, count)
+_rate_lock = threading.Lock()
+
+@app.middleware("http")
+async def rate_limiter(request: Request, call_next):
+    """简单基于 IP 的速率限制，只对 API 和搜索路径生效"""
+    path = request.url.path
+    if not path.startswith("/api/"):
+        return await call_next(request)
+    ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    with _rate_lock:
+        entry = _rate_limit_store.get(ip)
+        if entry is None or now - entry[0] > _RATE_LIMIT_WINDOW:
+            _rate_limit_store[ip] = (now, 1)
+        else:
+            count = entry[1] + 1
+            _rate_limit_store[ip] = (entry[0], count)
+            if count > _RATE_LIMIT_MAX:
+                return JSONResponse(status_code=429, content={"error": "请求太频繁，请稍后重试", "retry_after": _RATE_LIMIT_WINDOW})
+        # 定期清理过期条目
+        if len(_rate_limit_store) > 10000:
+            stale = [k for k, v in _rate_limit_store.items() if now - v[0] > _RATE_LIMIT_WINDOW * 2]
+            for k in stale:
+                del _rate_limit_store[k]
+    return await call_next(request)
+
+
 # ============ ROUTES ============
 @app.get("/api/health")
 async def health():
-    """健康检查"""
-    return {"status": "healthy", "ready": _ready}
+    """健康检查 — 返回服务状态和基本信息"""
+    total_chunks = _index.ntotal if _index else 0
+    with _meta_lock:
+        total_files = len(set(m.get("file_hash", "") for m in _metadata))
+    return {
+        "status": "healthy",
+        "ready": _ready,
+        "total_files": total_files,
+        "total_chunks": total_chunks,
+        "uptime_seconds": round(time.time() - START_TIME, 1),
+    }
 
 
 def _backup_db():
@@ -1265,8 +1399,8 @@ def _backup_db():
         pass
 
 
-def _log_search(query: str, user_ip: str = ""):
-    """记录搜索日志"""
+def _log_search(query: str, user_ip: str = "", result_count: int = 0, elapsed_ms: float = 0):
+    """记录搜索日志（含结果数和耗时）"""
     try:
         today = datetime.now().strftime("%Y%m%d")
         log_path = os.path.join(SEARCH_LOG_DIR, f"search_{today}.jsonl")
@@ -1274,6 +1408,8 @@ def _log_search(query: str, user_ip: str = ""):
             "time": datetime.now().isoformat(),
             "query": query[:200],
             "ip": user_ip,
+            "results": result_count,
+            "elapsed_ms": round(elapsed_ms, 1),
         }, ensure_ascii=False)
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(entry + "\n")
@@ -1314,6 +1450,33 @@ def _get_search_history(days: int = 7) -> list[dict]:
     return list(reversed(unique))
 
 
+def _get_hot_queries(days: int = 7, top_n: int = 20) -> list[dict]:
+    """获取热门搜索词统计"""
+    from collections import Counter
+    counter = Counter()
+    try:
+        now = datetime.now()
+        from datetime import timedelta
+        for i in range(days):
+            day = (now - timedelta(days=i)).strftime("%Y%m%d")
+            log_path = os.path.join(SEARCH_LOG_DIR, f"search_{day}.jsonl")
+            if os.path.exists(log_path):
+                with open(log_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            try:
+                                entry = json.loads(line)
+                                q = entry.get("query", "").strip()
+                                if q:
+                                    counter[q] += 1
+                            except Exception:
+                                pass
+    except Exception:
+        pass
+    return [{"query": q, "count": c} for q, c in counter.most_common(top_n)]
+
+
 def _start_backup_scheduler():
     """每日凌晨2点备份"""
     def loop():
@@ -1332,14 +1495,51 @@ def _start_backup_scheduler():
 async def stats():
     """获取服务统计"""
     total_chunks = _index.ntotal if _index else 0
+    # 快照元数据减少锁时间
     with _meta_lock:
-        total_files = len(set(m.get("file_hash", "") for m in _metadata))
+        meta_snapshot = list(_metadata)
+    total_files = len(set(m.get("file_hash", "") for m in meta_snapshot))
+
+    # 统计今日反馈数
+    fb_count = 0
+    try:
+        fb_file = os.path.join(SEARCH_LOG_DIR, f"feedback_{datetime.now().strftime('%Y%m%d')}.jsonl")
+        if os.path.exists(fb_file):
+            with open(fb_file, "r", encoding="utf-8") as f:
+                fb_count = sum(1 for line in f if line.strip())
+    except Exception:
+        pass
 
     return StatsResponse(
         total_files=total_files,
         total_chunks=total_chunks,
         uptime_seconds=round(time.time() - START_TIME, 1),
+        total_tools=len(TOOLS_DATA),
+        total_faq=len(FAQ_DATA),
+        feedback_count_today=fb_count,
     )
+
+
+@app.get("/api/documents/{file_hash}")
+async def get_document_detail(file_hash: str):
+    """获取文档详情（所有 chunk 的完整文本）"""
+    with _meta_lock:
+        chunks = [m for m in _metadata if m.get("file_hash") == file_hash]
+    if not chunks:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    # 按 parent → child 排序合并
+    parents = [c for c in chunks if c.get("chunk_type") == "parent"]
+    children = [c for c in chunks if c.get("chunk_type") != "parent"]
+    return {
+        "file_name": chunks[0].get("file_name", ""),
+        "file_hash": file_hash,
+        "category": chunks[0].get("category", "未分类"),
+        "created_at": chunks[0].get("created_at", ""),
+        "parent_count": len(parents),
+        "child_count": len(children),
+        "total_chunks": len(chunks),
+        "preview": [{"text": p.get("text", "")[:800], "chunk_type": p.get("chunk_type")} for p in parents[:5]],
+    }
 
 
 @app.get("/api/documents")
@@ -1368,10 +1568,14 @@ async def search_history():
 async def search(
     q: str = Query(..., min_length=1, max_length=500),
     top_k: int = Query(default=10, ge=1, le=50),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=50),
+    lang: str = Query(default="auto", regex="^(auto|zh|en)$"),
     request: Request = None,
 ):
     """
     混合检索：向量语义 + BM25 关键词 → Reranker 精排。
+    lang: auto=自动检测, zh=中文优先, en=英文优先
     """
     if not q.strip():
         raise HTTPException(status_code=400, detail="查询内容不能为空")
@@ -1381,22 +1585,30 @@ async def search(
     processed_q = _preprocess_query(original_q)
 
     ip = request.client.host if request else ""
-    _log_search(original_q, ip)
+    t0 = time.time()
+
+    # 语言检测
+    detected_lang = "en" if all(ord(c) < 128 for c in original_q if c.isalpha()) else "zh"
 
     try:
         if _index is None or _index.ntotal == 0:
-            return {"results": [], "query": original_q}
+            _log_search(original_q, ip, 0, (time.time()-t0)*1000)
+            return {"results": [], "query": original_q, "page": 1, "page_size": page_size, "total": 0, "total_pages": 0, "has_more": False, "lang": detected_lang}
 
         embedder = _get_embedder()
         query_vec = embedder.encode(processed_q).astype(np.float32).reshape(1, -1)
         faiss.normalize_L2(query_vec)  # IP → COSINE
 
         # === 阶段 1: FAISS 向量检索 (Child chunks only) ===
+        # 优化：先快照元数据，减少锁持有时间
         with _meta_lock:
-            child_indices = [i for i, m in enumerate(_metadata) if m.get("chunk_type") == "child"]
+            meta_snapshot = list(_metadata)
+
+        child_indices = [i for i, m in enumerate(meta_snapshot) if m.get("chunk_type") == "child"]
 
         if not child_indices or _index is None or _index.ntotal == 0:
-            return {"results": [], "query": original_q}
+            _log_search(original_q, ip, 0, (time.time()-t0)*1000)
+            return {"results": [], "query": original_q, "page": 1, "page_size": page_size, "total": 0, "total_pages": 0, "has_more": False, "lang": detected_lang}
 
         # FAISS 全量搜索，后过滤 child
         k = min(top_k * 10, _index.ntotal)
@@ -1404,16 +1616,15 @@ async def search(
 
         # 过滤 child + 去重
         candidates = {}
-        with _meta_lock:
-            for dist, idx in zip(distances[0], indices[0]):
-                if idx < 0 or idx >= len(_metadata):
-                    continue
-                meta = _metadata[idx]
-                if meta.get("chunk_type") != "child":
-                    continue
-                parent_id = meta.get("parent_id", "")
-                if parent_id not in candidates or dist > candidates[parent_id]["score"]:
-                    candidates[parent_id] = {"meta": meta, "score": float(dist)}
+        for dist, idx in zip(distances[0], indices[0]):
+            if idx < 0 or idx >= len(meta_snapshot):
+                continue
+            meta = meta_snapshot[idx]
+            if meta.get("chunk_type") != "child":
+                continue
+            parent_id = meta.get("parent_id", "")
+            if parent_id not in candidates or dist > candidates[parent_id]["score"]:
+                candidates[parent_id] = {"meta": meta, "score": float(dist)}
 
         # === 阶段 2: BM25 关键词检索 ===
         bm = _get_bm25()
@@ -1434,7 +1645,8 @@ async def search(
                     candidates[pid] = {"meta": meta, "score": norm_bm}
 
         if not candidates:
-            return {"results": [], "query": original_q}
+            _log_search(original_q, ip, 0, (time.time()-t0)*1000)
+            return {"results": [], "query": original_q, "page": 1, "page_size": page_size, "total": 0, "total_pages": 0, "has_more": False, "lang": detected_lang}
 
         # === 阶段 3: Reranker 精排（如有） ===
         reranker = _get_reranker()
@@ -1467,12 +1679,12 @@ async def search(
         # 收集 parent_id，回取 parent 文本
         parent_ids = [pid for pid, _ in sorted_cands[:top_k * 5]]
         parent_cache = {}
-        with _meta_lock:
-            for m in _metadata:
-                if m.get("chunk_type") == "parent" and m.get("parent_id") in parent_ids:
-                    pid = m["parent_id"]
-                    if pid not in parent_cache:
-                        parent_cache[pid] = m
+        # 在已快照的元数据中查找 parent
+        for m in meta_snapshot:
+            if m.get("chunk_type") == "parent" and m.get("parent_id") in parent_ids:
+                pid = m["parent_id"]
+                if pid not in parent_cache:
+                    parent_cache[pid] = m
 
         # 组装输出
         output = []
@@ -1502,8 +1714,28 @@ async def search(
             if len(output) >= top_k:
                 break
 
-        return {"results": output, "query": original_q}
+        # 分页：先取全部 top_k 结果，再按 page/page_size 切片
+        total_count = len(output)
+        start = (page - 1) * page_size
+        paged = output[start:start + page_size]
+        total_pages = max(1, (total_count + page_size - 1) // page_size) if total_count > 0 else 0
+
+        elapsed = (time.time() - t0) * 1000
+        _log_search(original_q, ip, len(paged), elapsed)
+        return {
+            "results": paged,
+            "query": original_q,
+            "elapsed_ms": round(elapsed, 1),
+            "page": page,
+            "page_size": page_size,
+            "total": total_count,
+            "total_pages": total_pages,
+            "has_more": page < total_pages,
+            "lang": detected_lang,
+        }
     except Exception as e:
+        elapsed = (time.time() - t0) * 1000
+        _log_search(original_q, ip, 0, elapsed)
         raise HTTPException(status_code=500, detail=str(e)[:200])
 
 
@@ -1768,11 +2000,16 @@ def _upload_async(temp_path, safe_name, file_hash, ext):
 @app.get("/api/task/{task_id}")
 async def get_task_status(task_id: str):
     """查询异步任务状态"""
-    with _task_lock:
-        task = _task_store.get(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    return task
+    try:
+        with _task_lock:
+            task = _task_store.get(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        return task
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"查询任务状态失败: {str(e)[:200]}")
 
 
 @app.delete("/api/documents/{file_hash}")
@@ -1804,14 +2041,15 @@ async def admin_stats():
     format_dist = {}
     total_files = 0
     with _meta_lock:
-        seen = set()
-        for m in _metadata:
-            fh = m.get("file_hash", "")
-            if fh not in seen:
-                seen.add(fh)
-                total_files += 1
-                ext = Path(m.get("file_name", "")).suffix.lower().lstrip('.') or "unknown"
-                format_dist[ext] = format_dist.get(ext, 0) + 1
+        meta_snapshot = list(_metadata)
+    seen = set()
+    for m in meta_snapshot:
+        fh = m.get("file_hash", "")
+        if fh not in seen:
+            seen.add(fh)
+            total_files += 1
+            ext = Path(m.get("file_name", "")).suffix.lower().lstrip('.') or "unknown"
+            format_dist[ext] = format_dist.get(ext, 0) + 1
 
     # 计算数据库大小
     db_size = 0
@@ -2022,6 +2260,321 @@ async def admin_recent_activities():
     except Exception as e:
         print(f"获取活动记录失败：{e}")
         return []
+
+
+# ============ 前端新 API（阶段六：后端代码补充） ============
+
+@app.get("/api/tools")
+async def get_tools():
+    """获取工具列表 — 替代前端硬编码 TOOL_URLS，优先读动态配置"""
+    cfg = _load_config()
+    tools = cfg.get("tools", TOOLS_DATA)
+    return {"tools": tools, "total": len(tools)}
+
+
+@app.get("/api/tools/check")
+async def check_tools_availability():
+    """检测所有工具 URL 的可达性（异步并发）"""
+    import asyncio, concurrent.futures
+    cfg = _load_config()
+    tools = cfg.get("tools", TOOLS_DATA)
+
+    async def check_one(tool):
+        url = tool.get("url", "")
+        if not url or url.startswith("#"):
+            return {"id": tool.get("id"), "name": tool.get("name"), "available": tool.get("available", True), "reachable": None, "latency_ms": None, "error": "未配置 URL"}
+        if url.startswith("\\\\"):
+            return {"id": tool.get("id"), "name": tool.get("name"), "available": tool.get("available", True), "reachable": None, "latency_ms": None, "error": "SMB 路径，跳过检测"}
+        try:
+            import urllib.request
+            t0 = time.time()
+            req = urllib.request.Request(url, method="HEAD")
+            loop = asyncio.get_event_loop()
+            resp = await loop.run_in_executor(
+                concurrent.futures.ThreadPoolExecutor(max_workers=1),
+                lambda: urllib.request.urlopen(req, timeout=5)
+            )
+            elapsed = (time.time() - t0) * 1000
+            return {"id": tool.get("id"), "name": tool.get("name"), "reachable": True, "latency_ms": round(elapsed, 1), "status_code": resp.status}
+        except Exception as e:
+            return {"id": tool.get("id"), "name": tool.get("name"), "reachable": False, "latency_ms": None, "error": str(e)[:100]}
+
+    tasks = [check_one(t) for t in tools]
+    results = await asyncio.gather(*tasks)
+    online = sum(1 for r in results if r.get("reachable") is True)
+    return {"results": results, "online": online, "offline": len(results) - online, "total": len(results)}
+
+
+@app.get("/api/faq")
+async def get_faq():
+    """获取常见问题列表 — 替代前端硬编码 QUESTIONS，优先读动态配置"""
+    cfg = _load_config()
+    faq = cfg.get("faq", FAQ_DATA)
+    return {"faq": faq, "total": len(faq)}
+
+
+@app.post("/api/feedback")
+async def submit_feedback(req: FeedbackRequest):
+    """收集 AI 回答反馈 — 替代前端 alert()"""
+    try:
+        today = datetime.now().strftime("%Y%m%d")
+        fb_path = os.path.join(SEARCH_LOG_DIR, f"feedback_{today}.jsonl")
+        entry = json.dumps({
+            "time": req.timestamp or datetime.now().isoformat(),
+            "query": req.query[:500],
+            "answer_preview": req.answer_preview[:500],
+            "useful": req.useful,
+        }, ensure_ascii=False)
+        with open(fb_path, "a", encoding="utf-8") as f:
+            f.write(entry + "\n")
+        return {"status": "ok"}
+    except Exception as e:
+        print(f"记录反馈失败：{e}")
+        return {"status": "error", "message": str(e)[:200]}
+
+
+# ============ 数据持久化辅助函数 ============
+_CONFIG_PATH = os.path.join(DB_PATH, "config.json")
+_CONFIG_HISTORY_DIR = os.path.join(DB_PATH, "config_history")
+
+def _load_config() -> dict:
+    """加载可编辑配置（工具+FAQ）"""
+    try:
+        if os.path.exists(_CONFIG_PATH):
+            with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {"tools": TOOLS_DATA, "faq": FAQ_DATA}
+
+def _save_config(config: dict):
+    """保存配置到磁盘，同时保留历史版本"""
+    os.makedirs(DB_PATH, exist_ok=True)
+    # 如果旧配置存在且不同，先归档
+    if os.path.exists(_CONFIG_PATH):
+        try:
+            with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+                old = f.read()
+            new = json.dumps(config, ensure_ascii=False, indent=2)
+            if old != new:
+                os.makedirs(_CONFIG_HISTORY_DIR, exist_ok=True)
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                hist_path = os.path.join(_CONFIG_HISTORY_DIR, f"config_{ts}.json")
+                with open(hist_path, "w", encoding="utf-8") as f:
+                    f.write(old)
+                # 保留最近 50 个历史版本
+                hfiles = sorted(os.listdir(_CONFIG_HISTORY_DIR), reverse=True)
+                for fname in hfiles[50:]:
+                    os.remove(os.path.join(_CONFIG_HISTORY_DIR, fname))
+        except Exception:
+            pass
+    with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
+
+
+# ============ 管理面板扩展 API ============
+
+@app.get("/api/admin/tools")
+async def admin_get_tools():
+    """管理面板：获取工具列表（含可编辑版本）"""
+    cfg = _load_config()
+    return {"tools": cfg.get("tools", TOOLS_DATA), "total": len(cfg.get("tools", TOOLS_DATA))}
+
+
+@app.post("/api/admin/tools")
+async def admin_save_tools(request: Request):
+    """管理面板：保存工具列表"""
+    try:
+        body = await request.json()
+        cfg = _load_config()
+        cfg["tools"] = body.get("tools", TOOLS_DATA)
+        _save_config(cfg)
+        return {"status": "ok", "total": len(cfg["tools"])}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)[:200])
+
+
+@app.get("/api/admin/faq")
+async def admin_get_faq():
+    """管理面板：获取 FAQ 列表"""
+    cfg = _load_config()
+    return {"faq": cfg.get("faq", FAQ_DATA), "total": len(cfg.get("faq", FAQ_DATA))}
+
+
+@app.post("/api/admin/faq")
+async def admin_save_faq(request: Request):
+    """管理面板：保存 FAQ 列表"""
+    try:
+        body = await request.json()
+        cfg = _load_config()
+        cfg["faq"] = body.get("faq", FAQ_DATA)
+        _save_config(cfg)
+        return {"status": "ok", "total": len(cfg["faq"])}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)[:200])
+
+
+@app.get("/api/admin/feedbacks")
+async def admin_get_feedbacks(days: int = Query(7, ge=1, le=90)):
+    """管理面板：获取最近 N 天的 AI 反馈数据"""
+    feedbacks = []
+    try:
+        now = datetime.now()
+        from datetime import timedelta
+        for i in range(days):
+            day = (now - timedelta(days=i)).strftime("%Y%m%d")
+            fb_path = os.path.join(SEARCH_LOG_DIR, f"feedback_{day}.jsonl")
+            if os.path.exists(fb_path):
+                with open(fb_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            try:
+                                feedbacks.append(json.loads(line))
+                            except Exception:
+                                pass
+    except Exception:
+        pass
+    # 按时间倒序
+    feedbacks.sort(key=lambda x: x.get("time", ""), reverse=True)
+    total = len(feedbacks)
+    useful = sum(1 for fb in feedbacks if fb.get("useful"))
+    return {
+        "feedbacks": feedbacks[:200],
+        "total": total,
+        "useful": useful,
+        "useless": total - useful,
+        "useful_rate": round(useful / total * 100, 1) if total > 0 else 0,
+    }
+
+
+@app.get("/api/admin/hot-queries")
+async def admin_hot_queries(days: int = Query(7, ge=1, le=90), top_n: int = Query(20, ge=5, le=100)):
+    """管理面板：热门搜索词统计"""
+    hot = _get_hot_queries(days, top_n)
+    return {"hot_queries": hot, "total_unique": len(hot), "days": days}
+
+
+@app.get("/api/admin/export/documents")
+async def admin_export_documents():
+    """导出文档列表为 CSV"""
+    from fastapi.responses import StreamingResponse
+    import io
+    with _meta_lock:
+        seen = {}
+        for m in _metadata:
+            fh = m.get("file_hash", "")
+            if fh not in seen:
+                seen[fh] = m
+    output = io.StringIO()
+    output.write("file_name,category,chunks,created_at\n")
+    for m in seen.values():
+        name = (m.get("file_name", "") or "").replace('"', '""')
+        cat = (m.get("category", "") or "").replace('"', '""')
+        chunks = sum(1 for x in _metadata if x.get("file_hash") == m.get("file_hash", ""))
+        ts = m.get("created_at", "")
+        output.write(f'"{name}","{cat}",{chunks},"{ts}"\n')
+    csv = output.getvalue()
+    output.close()
+    return StreamingResponse(io.BytesIO(csv.encode('utf-8-sig')),
+                             media_type="text/csv",
+                             headers={"Content-Disposition": f"attachment; filename=documents_{datetime.now().strftime('%Y%m%d')}.csv"})
+
+
+@app.get("/api/admin/export/search-logs")
+async def admin_export_search_logs(days: int = Query(7, ge=1, le=90)):
+    """导出搜索日志为 CSV"""
+    from fastapi.responses import StreamingResponse
+    import io
+    logs = []
+    try:
+        now = datetime.now()
+        from datetime import timedelta
+        for i in range(days):
+            day = (now - timedelta(days=i)).strftime("%Y%m%d")
+            log_path = os.path.join(SEARCH_LOG_DIR, f"search_{day}.jsonl")
+            if os.path.exists(log_path):
+                with open(log_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            try:
+                                logs.append(json.loads(line))
+                            except Exception:
+                                pass
+    except Exception:
+        pass
+    logs.sort(key=lambda x: x.get("time", ""), reverse=True)
+    output = io.StringIO()
+    output.write("time,query,results,elapsed_ms,ip\n")
+    for l in logs[:5000]:
+        t = (l.get("time", "") or "").replace('"', '""')
+        q = (l.get("query", "") or "").replace('"', '""')
+        r = l.get("results", "")
+        e = l.get("elapsed_ms", "")
+        ip = l.get("ip", "")
+        output.write(f'"{t}","{q}",{r},{e},"{ip}"\n')
+    csv = output.getvalue()
+    output.close()
+    return StreamingResponse(io.BytesIO(csv.encode('utf-8-sig')),
+                             media_type="text/csv",
+                             headers={"Content-Disposition": f"attachment; filename=search_logs_{datetime.now().strftime('%Y%m%d')}.csv"})
+
+
+@app.get("/api/admin/config")
+async def admin_get_config():
+    """管理面板：获取完整配置（工具+FAQ）"""
+    cfg = _load_config()
+    return cfg
+
+
+@app.get("/api/admin/config/history")
+async def admin_config_history():
+    """管理面板：获取配置变更历史列表"""
+    history = []
+    try:
+        if os.path.exists(_CONFIG_HISTORY_DIR):
+            for fname in sorted(os.listdir(_CONFIG_HISTORY_DIR), reverse=True):
+                if fname.startswith("config_") and fname.endswith(".json"):
+                    ts_str = fname.replace("config_", "").replace(".json", "")
+                    fpath = os.path.join(_CONFIG_HISTORY_DIR, fname)
+                    try:
+                        with open(fpath, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        history.append({
+                            "version": ts_str,
+                            "tools_count": len(data.get("tools", [])),
+                            "faq_count": len(data.get("faq", [])),
+                            "file": fname,
+                        })
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    return {"history": history, "total": len(history)}
+
+
+@app.post("/api/admin/config/rollback")
+async def admin_config_rollback(request: Request):
+    """管理面板：回滚配置到指定历史版本"""
+    try:
+        body = await request.json()
+        version_file = body.get("version", "")
+        if not version_file or ".." in version_file or "/" in version_file:
+            raise HTTPException(status_code=400, detail="无效的版本号")
+        hist_path = os.path.join(_CONFIG_HISTORY_DIR, version_file)
+        if not os.path.exists(hist_path):
+            raise HTTPException(status_code=404, detail="历史版本不存在")
+        with open(hist_path, "r", encoding="utf-8") as f:
+            rolled = json.load(f)
+        _save_config(rolled)
+        return {"status": "ok", "version": version_file,
+                "tools": len(rolled.get("tools", [])),
+                "faq": len(rolled.get("faq", []))}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)[:200])
 
 
 # ============ MAIN ============

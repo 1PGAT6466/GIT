@@ -54,6 +54,7 @@ h3 { font-size: 21px; font-weight: 700; margin-bottom: 22px; padding-left: 14px;
 .si.bc { background: var(--bl); color: var(--b); }
 .si.gc { background: var(--gl); color: var(--g); }
 .si.pc { background: var(--pl); color: var(--p); }
+.si.rc { background: var(--rl); color: var(--r); }
 .sc .sv { font-size: 26px; font-weight: 700; line-height: 1.2; }
 .sc .sl { font-size: 12px; color: var(--t3); margin-top: 3px; }
 
@@ -64,14 +65,23 @@ h3 { font-size: 21px; font-weight: 700; margin-bottom: 22px; padding-left: 14px;
   display: flex; align-items: center; gap: 8px;
 }
 .cb { padding: 22px; }
-.cw { height: 280px; }
+.cw { height: 280px; position: relative; }
 .cw canvas { max-height: 280px; }
+
+/* Stat trend arrow */
+.sc .st {
+  font-size: 12px; margin-top: 2px; display: flex; align-items: center; gap: 3px;
+}
+.st.up { color: var(--g); }
+.st.down { color: var(--r); }
+.st.neutral { color: var(--t3); }
 
 /* Table */
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th { text-align: left; font-size: 11.5px; font-weight: 600; color: var(--t3); padding: 11px 14px; border-bottom: 2px solid var(--bd); text-transform: uppercase; letter-spacing: .5px; }
 td { padding: 12px 14px; border-bottom: 1px solid var(--bd); color: var(--t2); }
-tr:hover td { background: #fafafa; }
+tr:nth-child(even) td { background: #fafbfc; }
+tr:hover td { background: #f0f3f7; }
 
 /* Tags */
 .tag { font-size: 11px; font-weight: 600; padding: 4px 11px; border-radius: 12px; display: inline-block; }
@@ -82,12 +92,18 @@ tr:hover td { background: #fafafa; }
 
 /* Progress */
 .pbar { height: 6px; background: var(--bd); border-radius: 3px; overflow: hidden; margin-top: 10px; }
-.pbar div { height: 100%; border-radius: 3px; transition: width .4s; }
+.pbar div { height: 100%; border-radius: 3px; transition: width .4s; position: relative; overflow: hidden; }
+.pbar div::after { content: ''; position: absolute; top: 0; left: -40%; width: 30%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); animation: pbarShimmer 2s ease-in-out infinite; }
+@keyframes pbarShimmer { 0% { left: -40%; } 100% { left: 120%; } }
 .loading { text-align: center; padding: 50px; color: var(--t3); }
 .empty { text-align: center; padding: 60px 20px; color: var(--t3); }
-.empty .icon { font-size: 42px; margin-bottom: 12px; opacity: .3; }
-.empty p { font-size: 14px; }
+.empty .icon { font-size: 48px; margin-bottom: 12px; opacity: .25; transition: all .4s ease; filter: blur(0px); }
+.card:hover .empty .icon { opacity: .45; filter: blur(0px) drop-shadow(0 2px 8px rgba(255,103,0,.15)); transform: scale(1.05); }
+.empty p { font-size: 14px; font-weight: 500; }
 .empty .hint { font-size: 12px; margin-top: 6px; color: var(--t2); }
+/* Pulse animation for live indicators */
+@keyframes softPulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+.live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--g); animation: softPulse 2s infinite; margin-right: 4px; vertical-align: middle; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
@@ -116,6 +132,11 @@ var NAV = [
   { id: 'stats', label: '📈 统计', icon: '' },
   { id: 'server', label: '⚙️ 服务器', icon: '' },
   { id: 'search', label: '🔍 搜索记录', icon: '' },
+  { id: 'tools-mgr', label: '🔧 工具管理', icon: '' },
+  { id: 'faq-mgr', label: '❓ FAQ 管理', icon: '' },
+  { id: 'feedbacks', label: '💬 反馈总览', icon: '' },
+  { id: 'config-hist', label: '🕐 配置历史', icon: '' },
+  { id: 'docs', label: '📚 文档浏览', icon: '' },
 ];
 
 function hash() { return location.hash.slice(1) || 'dashboard'; }
@@ -150,6 +171,11 @@ function render() {
     case 'stats': statsView(v); break;
     case 'server': serverView(v); break;
     case 'search': searchView(v); break;
+    case 'tools-mgr': toolsMgrView(v); break;
+    case 'faq-mgr': faqMgrView(v); break;
+    case 'feedbacks': feedbacksView(v); break;
+    case 'config-hist': configHistView(v); break;
+    case 'docs': docsView(v); break;
     default: dashboard(v);
   }
 }
@@ -165,21 +191,30 @@ function dashboard(v) {
       '<div class="card"><div class="ch">📈 上传趋势</div><div class="cb cw"><canvas id="cTrend"></canvas></div></div>' +
       '<div class="card"><div class="ch">📁 格式分布</div><div class="cb cw"><canvas id="cFormat"></canvas></div></div>' +
     '</div>' +
-    '<div class="card" style="margin-top:18px"><div class="ch">💻 服务器状态</div><div class="cb"><div class="grid3" id="svrStatus"></div></div></div>';
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px">' +
+      '<div class="card"><div class="ch">🔥 热门搜索</div><div class="cb" id="hotQueries" style="max-height:220px;overflow-y:auto"><div class="loading">加载中...</div></div></div>' +
+      '<div class="card"><div class="ch">💻 服务器状态</div><div class="cb"><div class="grid3" id="svrStatus"></div></div></div>' +
+    '</div>';
   initDashboard();
 }
 
+var _dashboardCharts = [];
 function initDashboard() {
+  // 清理之前的图表，防止内存泄漏
+  _dashboardCharts.forEach(function(c) { try { c.destroy(); } catch(e) {} });
+  _dashboardCharts = [];
+
   fetch(API + '/api/admin/stats').then(function(r) { return r.json(); }).then(function(d) {
+    var avgChunks = d.totalFiles ? Math.round(d.totalChunks / d.totalFiles) : 0;
     document.getElementById('dashCards').innerHTML =
-      '<div class="sc"><div class="si oc">📄</div><div><div class="sv">' + (d.totalFiles || 0) + '</div><div class="sl">文档总数</div></div></div>' +
-      '<div class="sc"><div class="si bc">✂️</div><div><div class="sv">' + (d.totalChunks || 0) + '</div><div class="sl">文本片段</div></div></div>' +
-      '<div class="sc"><div class="si gc">💾</div><div><div class="sv">' + fmtSize(d.dbSize || 0) + '</div><div class="sl">数据库大小</div></div></div>' +
-      '<div class="sc"><div class="si pc">📊</div><div><div class="sv">' + (d.totalFiles ? Math.round(d.totalChunks / d.totalFiles) : 0) + '</div><div class="sl">平均片段/文件</div></div></div>';
+      '<div class="sc"><div class="si oc">📄</div><div><div class="sv">' + (d.totalFiles || 0) + '</div><div class="sl">文档总数</div><div class="st neutral">📂 已索引</div></div></div>' +
+      '<div class="sc"><div class="si bc">✂️</div><div><div class="sv">' + (d.totalChunks || 0) + '</div><div class="sl">文本片段</div><div class="st neutral">📊 ' + avgChunks + ' 片段/文件</div></div></div>' +
+      '<div class="sc"><div class="si gc">💾</div><div><div class="sv">' + fmtSize(d.dbSize || 0) + '</div><div class="sl">数据库大小</div><div class="st neutral">FAISS 索引</div></div></div>' +
+      '<div class="sc"><div class="si pc">📦</div><div><div class="sv">' + Object.keys(d.formatDistribution || {}).length + '</div><div class="sl">文件类型数</div><div class="st neutral">已覆盖格式</div></div></div>';
 
     var fmt = d.formatDistribution || {};
     if (Object.keys(fmt).length) {
-      new Chart(document.getElementById('cFormat'), {
+      var fmtChart = new Chart(document.getElementById('cFormat'), {
         type: 'doughnut',
         data: {
           labels: Object.keys(fmt),
@@ -187,12 +222,13 @@ function initDashboard() {
         },
         options: { plugins: { legend: { position: 'right', labels: { padding: 14, usePointStyle: true } } } }
       });
+      _dashboardCharts.push(fmtChart);
     }
   });
 
   fetch(API + '/api/admin/upload-trend').then(function(r) { return r.json(); }).then(function(d) {
     if (!d || !d.length) return;
-    new Chart(document.getElementById('cTrend'), {
+    var trendChart = new Chart(document.getElementById('cTrend'), {
       type: 'line',
       data: {
         labels: d.map(function(i) { return i.date; }),
@@ -200,6 +236,7 @@ function initDashboard() {
       },
       options: { plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: '#f0f0f0' } } } }
     });
+    _dashboardCharts.push(trendChart);
   });
 
   fetch(API + '/api/admin/server-status').then(function(r) { return r.json(); }).then(function(d) {
@@ -208,6 +245,28 @@ function initDashboard() {
       '<div><div style="font-size:12px;color:#999;margin-bottom:6px">内存</div><div style="font-size:26px;font-weight:700;margin-bottom:6px">' + (d.memory || 0) + '<span style="font-size:14px;color:#999">%</span></div><div class="pbar"><div style="width:' + (d.memory || 0) + '%;background:var(--g)"></div></div></div>' +
       '<div><div style="font-size:12px;color:#999;margin-bottom:6px">磁盘</div><div style="font-size:26px;font-weight:700;margin-bottom:6px">' + (d.disk || 0) + '<span style="font-size:14px;color:#999">%</span></div><div class="pbar"><div style="width:' + (d.disk || 0) + '%;background:var(--b)"></div></div></div>';
   });
+
+  // 热门搜索
+  fetch(API + '/api/admin/hot-queries?days=7&top_n=10').then(function(r){return r.json()}).then(function(d){
+    var queries = d.hot_queries || [];
+    if (!queries.length) {
+      document.getElementById('hotQueries').innerHTML = '<div style="color:var(--t3);padding:10px">暂无搜索数据</div>';
+      return;
+    }
+    var max = queries[0].count || 1;
+    var h = '';
+    queries.forEach(function(q,i){
+      var bar = Math.round((q.count/max)*100);
+      var color = i<3?'var(--o)':'var(--t3)';
+      h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+        '<span style="font-size:13px;min-width:20px;font-weight:600;color:'+color+'">'+(i+1)+'</span>' +
+        '<span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+esc(q.query)+'</span>' +
+        '<span style="font-size:11px;color:var(--t3);min-width:30px;text-align:right">'+q.count+'次</span>' +
+        '<div style="width:60px;height:6px;background:var(--bd);border-radius:3px;flex-shrink:0"><div style="width:'+bar+'%;height:100%;background:'+color+';border-radius:3px"></div></div>' +
+        '</div>';
+    });
+    document.getElementById('hotQueries').innerHTML = h;
+  }).catch(function(){document.getElementById('hotQueries').innerHTML='<div style="color:var(--t3);padding:10px">加载失败</div>'});
 }
 
 /* ============ 上传监控 ============ */
@@ -363,7 +422,9 @@ function serverView(v) {
 
 /* ============ AI 搜索记录 ============ */
 function searchView(v) {
-  v.innerHTML = '<h3>🔍 AI 搜索记录</h3><div class="card"><div class="ch">搜索记录 <span id="scnt" style="font-weight:400;color:#999;font-size:13px"></span></div><div class="cb" id="slist"><div class="loading">加载中...</div></div></div>';
+  v.innerHTML = '<h3>🔍 AI 搜索记录</h3><div class="card"><div class="ch">搜索记录 <span id="scnt" style="font-weight:400;color:#999;font-size:13px"></span>' +
+    '<a href="'+API+'/api/admin/export/search-logs?days=7" download style="margin-left:auto;padding:6px 16px;border-radius:8px;border:1px solid var(--b);color:var(--b);font-size:12px;font-weight:600;text-decoration:none;font-family:inherit">📥 导出 CSV</a></div>' +
+    '<div class="cb" id="slist"><div class="loading">加载中...</div></div></div>';
   fetch(API + '/api/admin/ai-search-logs').then(function(r) { return r.json(); }).then(function(d) {
     var logs = Array.isArray(d) ? d : [];
     document.getElementById('scnt').textContent = '共 ' + logs.length + ' 条';
@@ -371,15 +432,233 @@ function searchView(v) {
       document.getElementById('slist').innerHTML = '<div class="empty"><div class="icon">🔍</div><p>暂无搜索记录</p></div>';
       return;
     }
-    var h = '<table><thead><tr><th style="width:170px">时间</th><th>搜索内容</th><th style="width:90px">类型</th></tr></thead><tbody>';
+    var h = '<table><thead><tr><th style="width:155px">时间</th><th>搜索内容</th><th style="width:50px">结果</th><th style="width:60px">耗时</th><th style="width:60px">类型</th></tr></thead><tbody>';
     logs.forEach(function(l) {
-      h += '<tr><td style="font-size:12px;color:#999">' + fmtTime(l.timestamp || l.created_at) + '</td>' +
-        '<td style="font-weight:500">' + (l.query || l.question || '--') + '</td>' +
+      var elapsed = l.elapsed_ms ? (l.elapsed_ms < 1000 ? Math.round(l.elapsed_ms)+'ms' : (l.elapsed_ms/1000).toFixed(1)+'s') : '-';
+      h += '<tr><td style="font-size:12px;color:#999">' + fmtTime(l.timestamp || l.created_at || l.time) + '</td>' +
+        '<td style="font-weight:500">' + esc(l.query || l.question || '--') + '</td>' +
+        '<td style="text-align:center;font-weight:600;color:' + ((l.results||0)>0?'var(--g)':'var(--t3)') + '">' + (l.results!=null?l.results:'-') + '</td>' +
+        '<td style="text-align:center;font-size:12px;color:var(--t3)">' + elapsed + '</td>' +
         '<td><span class="tag tag-info">' + (l.type || l.mode || '搜索') + '</span></td></tr>';
     });
     h += '</tbody></table>';
     document.getElementById('slist').innerHTML = h;
   });
+}
+
+/* ============ 工具管理 ============ */
+function toolsMgrView(v) {
+  v.innerHTML = '<h3>🔧 工具管理</h3>' +
+    '<div class="card"><div class="ch">可用工具 <span style="font-weight:400;color:#999;font-size:13px">（编辑后点击保存）</span>' +
+    '<button onclick="saveTools()" style="margin-left:auto;padding:8px 22px;border-radius:8px;border:none;background:var(--o);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">💾 保存</button></div>' +
+    '<div class="cb" id="tools-editor"><div class="loading">加载中...</div></div></div>' +
+    '<div style="margin-top:12px;text-align:center"><button onclick="addToolRow()" style="padding:8px 24px;border-radius:8px;border:2px dashed var(--o);background:var(--ol);color:var(--o);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">＋ 添加工具</button></div>';
+  fetch(API + '/api/admin/tools').then(function(r){return r.json()}).then(function(d){
+    window._toolsData = d.tools || [];
+    renderToolsTable();
+  });
+}
+function renderToolsTable() {
+  var tools = window._toolsData || [];
+  var h = '<table><thead><tr><th style="width:40px">图标</th><th style="width:120px">名称</th><th style="width:80px">分类</th><th>描述</th><th style="width:80px">URL/ID</th><th style="width:60px">可用</th><th style="width:60px">操作</th></tr></thead><tbody>';
+  for (var i = 0; i < tools.length; i++) {
+    var t = tools[i];
+    h += '<tr>' +
+      '<td><input value="' + (t.icon||'') + '" style="width:40px;text-align:center;border:1px solid var(--bd);border-radius:6px;padding:4px;font-size:16px" onchange="_toolsData['+i+'].icon=this.value"></td>' +
+      '<td><input value="' + esc(t.name||'') + '" style="width:110px;border:1px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px" onchange="_toolsData['+i+'].name=this.value"></td>' +
+      '<td><input value="' + esc(t.category||'') + '" style="width:70px;border:1px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px" onchange="_toolsData['+i+'].category=this.value"></td>' +
+      '<td><input value="' + esc(t.desc||'') + '" style="width:100%;border:1px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px" onchange="_toolsData['+i+'].desc=this.value"></td>' +
+      '<td><input value="' + esc(t.url||'') + '" style="width:70px;border:1px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px" onchange="_toolsData['+i+'].url=this.value"></td>' +
+      '<td style="text-align:center"><input type="checkbox" ' + (t.available!==false?'checked':'') + ' onchange="_toolsData['+i+'].available=this.checked" style="width:18px;height:18px;cursor:pointer"></td>' +
+      '<td style="text-align:center"><button onclick="delToolRow('+i+')" style="background:none;border:none;color:var(--r);cursor:pointer;font-size:16px" title="删除">🗑️</button></td>' +
+      '</tr>';
+  }
+  h += '</tbody></table>';
+  document.getElementById('tools-editor').innerHTML = h;
+}
+function addToolRow() {
+  var tools = window._toolsData || [];
+  var maxId = 0;
+  tools.forEach(function(t){var n=parseInt(t.id)||0;if(n>maxId)maxId=n});
+  tools.push({id:String(maxId+1),name:'新工具',icon:'🔧',category:'其他',url:'#',desc:'请填写描述',available:true});
+  window._toolsData = tools;
+  renderToolsTable();
+}
+function delToolRow(idx) {
+  if (!confirm('确定删除这个工具？')) return;
+  window._toolsData.splice(idx,1);
+  renderToolsTable();
+}
+function saveTools() {
+  var tools = window._toolsData || [];
+  fetch(API+'/api/admin/tools',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tools:tools})})
+    .then(function(r){return r.json()}).then(function(d){
+      if (d.status==='ok') alert('✅ 已保存 ' + tools.length + ' 个工具');
+      else alert('❌ 保存失败: '+(d.detail||''));
+    }).catch(function(e){alert('❌ 网络错误: '+e.message)});
+}
+
+/* ============ FAQ 管理 ============ */
+function faqMgrView(v) {
+  v.innerHTML = '<h3>❓ FAQ 管理</h3>' +
+    '<div class="card"><div class="ch">常见问题 <span style="font-weight:400;color:#999;font-size:13px">（编辑后点击保存）</span>' +
+    '<button onclick="saveFaq()" style="margin-left:auto;padding:8px 22px;border-radius:8px;border:none;background:var(--o);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">💾 保存</button></div>' +
+    '<div class="cb" id="faq-editor"><div class="loading">加载中...</div></div></div>' +
+    '<div style="margin-top:12px;text-align:center"><button onclick="addFaqRow()" style="padding:8px 24px;border-radius:8px;border:2px dashed var(--o);background:var(--ol);color:var(--o);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">＋ 添加 FAQ</button></div>';
+  fetch(API + '/api/admin/faq').then(function(r){return r.json()}).then(function(d){
+    window._faqData = d.faq || [];
+    renderFaqTable();
+  });
+}
+function renderFaqTable() {
+  var faq = window._faqData || [];
+  var h = '<table><thead><tr><th style="width:50px">#</th><th style="width:100px">分类</th><th>问题</th><th style="width:60px">操作</th></tr></thead><tbody>';
+  for (var i = 0; i < faq.length; i++) {
+    var q = faq[i];
+    h += '<tr>' +
+      '<td style="color:var(--t3);font-weight:600">' + (q.id||(i+1)) + '</td>' +
+      '<td><input value="' + esc(q.category||q.cat||'') + '" style="width:90px;border:1px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px" onchange="_faqData['+i+'].category=this.value"></td>' +
+      '<td><input value="' + esc(q.question||q.q||'') + '" style="width:100%;border:1px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:13px" onchange="_faqData['+i+'].question=this.value"></td>' +
+      '<td style="text-align:center"><button onclick="delFaqRow('+i+')" style="background:none;border:none;color:var(--r);cursor:pointer;font-size:16px" title="删除">🗑️</button></td>' +
+      '</tr>';
+  }
+  h += '</tbody></table>';
+  document.getElementById('faq-editor').innerHTML = h;
+}
+function addFaqRow() {
+  var faq = window._faqData || [];
+  var maxId = 0;
+  faq.forEach(function(q){var n=parseInt(q.id)||0;if(n>maxId)maxId=n});
+  faq.push({id:maxId+1,category:'其他',question:'新问题？',keywords:[]});
+  window._faqData = faq;
+  renderFaqTable();
+}
+function delFaqRow(idx) {
+  if (!confirm('确定删除这个 FAQ？')) return;
+  window._faqData.splice(idx,1);
+  renderFaqTable();
+}
+function saveFaq() {
+  var faq = window._faqData || [];
+  fetch(API+'/api/admin/faq',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({faq:faq})})
+    .then(function(r){return r.json()}).then(function(d){
+      if (d.status==='ok') alert('✅ 已保存 ' + faq.length + ' 个 FAQ');
+      else alert('❌ 保存失败: '+(d.detail||''));
+    }).catch(function(e){alert('❌ 网络错误: '+e.message)});
+}
+
+/* ============ 反馈总览 ============ */
+function feedbacksView(v) {
+  v.innerHTML = '<h3>💬 AI 反馈总览</h3>' +
+    '<div class="scards" id="fbCards"></div>' +
+    '<div class="card"><div class="ch">最近反馈</div><div class="cb" id="fbList"><div class="loading">加载中...</div></div></div>';
+  fetch(API + '/api/admin/feedbacks?days=7').then(function(r){return r.json()}).then(function(d){
+    document.getElementById('fbCards').innerHTML =
+      '<div class="sc"><div class="si gc">👍</div><div><div class="sv">' + (d.useful||0) + '</div><div class="sl">有用反馈</div><div class="st up">✅ ' + (d.useful_rate||0) + '%</div></div></div>' +
+      '<div class="sc"><div class="si rc">👎</div><div><div class="sv">' + (d.useless||0) + '</div><div class="sl">无用反馈</div><div class="st">📊 ' + (d.total||0) + ' 条总计</div></div></div>';
+    var fbs = d.feedbacks || [];
+    if (!fbs.length) {
+      document.getElementById('fbList').innerHTML = '<div class="empty"><div class="icon">📭</div><p>暂无反馈数据</p></div>';
+      return;
+    }
+    var h = '<table><thead><tr><th style="width:160px">时间</th><th>搜索问题</th><th style="width:70px">评价</th></tr></thead><tbody>';
+    fbs.forEach(function(fb){
+      h += '<tr>' +
+        '<td style="font-size:12px;color:#999">' + fmtTime(fb.time) + '</td>' +
+        '<td style="font-weight:500">' + esc(fb.query||'--') + '</td>' +
+        '<td>' + (fb.useful ? '<span class="tag tag-ok">👍 有用</span>' : '<span class="tag tag-err">👎 无用</span>') + '</td>' +
+        '</tr>';
+    });
+    h += '</tbody></table>';
+    document.getElementById('fbList').innerHTML = h;
+  });
+}
+
+// 辅助函数
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+/* ============ 文档浏览 ============ */
+function docsView(v) {
+  v.innerHTML = '<h3>📚 文档浏览</h3>' +
+    '<div class="card"><div class="ch">已入库文档 <span id="docCnt" style="font-weight:400;color:#999;font-size:13px"></span>' +
+    '<a href="'+API+'/api/admin/export/documents" download style="margin-left:auto;padding:6px 16px;border-radius:8px;border:1px solid var(--g);color:var(--g);font-size:12px;font-weight:600;text-decoration:none;font-family:inherit">📥 导出 CSV</a></div>' +
+    '<div class="cb" id="docList"><div class="loading">加载中...</div></div></div>' +
+    '<div class="card" style="margin-top:18px"><div class="ch">文档预览 <span id="docPreviewTitle" style="font-weight:400;color:#999;font-size:13px"></span></div>' +
+    '<div class="cb" id="docPreview" style="max-height:400px;overflow-y:auto"><div style="color:var(--t3);font-size:13px">← 点击左侧文档查看详情</div></div></div>';
+  fetch(API + '/api/documents').then(function(r){return r.json()}).then(function(d){
+    var docs = d.documents || [];
+    document.getElementById('docCnt').textContent = '共 ' + docs.length + ' 篇';
+    if (!docs.length) {
+      document.getElementById('docList').innerHTML = '<div class="empty"><div class="icon">📭</div><p>暂无文档</p></div>';
+      return;
+    }
+    var h = '<table><thead><tr><th>文件名</th><th>分类</th><th>上传时间</th><th style="width:60px">操作</th></tr></thead><tbody>';
+    docs.forEach(function(doc){
+      h += '<tr>' +
+        '<td style="font-weight:500">📄 ' + esc(doc.file_name) + '</td>' +
+        '<td><span class="tag tag-info">' + esc(doc.category||'未分类') + '</span></td>' +
+        '<td style="font-size:12px;color:#999">' + fmtTime(doc.created_at) + '</td>' +
+        '<td><button class="tag tag-ok" style="cursor:pointer;border:none;font-family:inherit;font-size:11px" onclick="previewDoc(\''+doc.file_hash+'\',\''+esc(doc.file_name)+'\')">👁 预览</button></td>' +
+        '</tr>';
+    });
+    h += '</tbody></table>';
+    document.getElementById('docList').innerHTML = h;
+  });
+}
+function previewDoc(hash, fname) {
+  document.getElementById('docPreviewTitle').textContent = '正在加载: ' + fname;
+  document.getElementById('docPreview').innerHTML = '<div class="loading">加载中...</div>';
+  fetch(API + '/api/documents/' + hash).then(function(r){return r.json()}).then(function(d){
+    document.getElementById('docPreviewTitle').textContent = fname + ' (' + d.total_chunks + ' chunks)';
+    var prev = d.preview || [];
+    if (!prev.length) {
+      document.getElementById('docPreview').innerHTML = '<div style="color:var(--t3)">暂无预览内容</div>';
+      return;
+    }
+    var h = '';
+    prev.forEach(function(p,i){
+      h += '<div style="margin-bottom:14px;padding:12px;background:#fafafa;border-radius:8px">' +
+        '<div style="font-size:11px;color:var(--t3);margin-bottom:4px">Chunk #' + (i+1) + ' | type: ' + (p.chunk_type||'text') + '</div>' +
+        '<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--t)">' + esc(p.text||'') + '</div>' +
+        '</div>';
+    });
+    document.getElementById('docPreview').innerHTML = h;
+  }).catch(function(e){document.getElementById('docPreview').innerHTML='<div style="color:var(--r)">加载失败: '+e.message+'</div>'});
+}
+
+/* ============ 配置历史 ============ */
+function configHistView(v) {
+  v.innerHTML = '<h3>🕐 配置变更历史</h3>' +
+    '<div class="card"><div class="ch">版本列表 <span style="font-weight:400;color:#999;font-size:13px">（点击回滚到该版本）</span></div>' +
+    '<div class="cb" id="histList"><div class="loading">加载中...</div></div></div>';
+  fetch(API + '/api/admin/config/history').then(function(r){return r.json()}).then(function(d){
+    var hist = d.history || [];
+    if (!hist.length) {
+      document.getElementById('histList').innerHTML = '<div class="empty"><div class="icon">📭</div><p>暂无历史版本（保存配置后自动生成）</p></div>';
+      return;
+    }
+    var h = '<table><thead><tr><th style="width:150px">版本时间</th><th style="width:80px">工具数</th><th style="width:80px">FAQ 数</th><th>操作</th></tr></thead><tbody>';
+    hist.forEach(function(v){
+      var ts = v.version;
+      var label = ts.substring(0,4)+'-'+ts.substring(4,6)+'-'+ts.substring(6,8)+' '+ts.substring(9,11)+':'+ts.substring(11,13)+':'+ts.substring(13,15);
+      h += '<tr>' +
+        '<td style="font-weight:500">' + label + '</td>' +
+        '<td style="text-align:center">' + v.tools_count + '</td>' +
+        '<td style="text-align:center">' + v.faq_count + '</td>' +
+        '<td><button class="tag tag-ok" style="cursor:pointer;border:none;font-family:inherit;font-size:12px" onclick="rollbackConfig(\''+v.file+'\')">↩ 回滚到此版本</button></td>' +
+        '</tr>';
+    });
+    h += '</tbody></table>';
+    document.getElementById('histList').innerHTML = h;
+  });
+}
+function rollbackConfig(versionFile) {
+  if (!confirm('确定回滚到版本 ' + versionFile + '？\n\n当前配置将被替换。')) return;
+  fetch(API+'/api/admin/config/rollback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:versionFile})})
+    .then(function(r){return r.json()}).then(function(d){
+      if (d.status==='ok') alert('✅ 已回滚到 ' + versionFile + '\n工具: ' + d.tools + ' 个, FAQ: ' + d.faq + ' 个');
+      else alert('❌ '+(d.detail||'失败'));
+    }).catch(function(e){alert('❌ 网络错误: '+e.message)});
 }
 </script>
 </body>

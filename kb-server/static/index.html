@@ -61,12 +61,15 @@ body {
 .hero { text-align:center; padding:48px 0 40px; background:var(--card); border-radius:24px; margin-bottom:32px; box-shadow:var(--shadow); }
 .hero h1 { font-size:40px; font-weight:800; margin-bottom:12px; }
 .hero p { font-size:16px; color:var(--text2); max-width:500px; margin:0 auto 32px; }
-.search-wrap { max-width:600px; margin:0 auto; display:flex; background:#fafafa; border:1px solid var(--border); border-radius:12px; overflow:hidden; transition:all .3s ease; }
+.search-wrap { max-width:600px; margin:0 auto; display:flex; background:#fafafa; border:1px solid var(--border); border-radius:12px; overflow:hidden; transition:all .3s ease; position:relative; }
 .search-wrap:focus-within { border-color:var(--accent); box-shadow:0 0 0 4px rgba(255,103,0,.06); transform:scale(1.01); }
-.search-wrap input { flex:1; background:transparent; border:none; outline:none; padding:14px 20px; font-size:15px; color:var(--text); font-family:inherit; transition:all .2s; }
+.search-wrap input { flex:1; background:transparent; border:none; outline:none; padding:14px 44px 14px 20px; font-size:15px; color:var(--text); font-family:inherit; transition:all .2s; }
 .search-wrap input::placeholder { color:var(--text3); transition:color .3s; }
 .search-wrap:focus-within input::placeholder { color:#ccc; }
-.search-wrap button { padding:14px 32px; background:var(--accent); color:#fff; border:none; font-size:15px; font-weight:600; cursor:pointer; font-family:inherit; transition:all .2s; }
+.search-wrap .clear-btn { position:absolute; right:110px; top:50%; transform:translateY(-50%); width:28px; height:28px; border-radius:50%; border:none; background:transparent; cursor:pointer; color:var(--text3); font-size:16px; display:flex; align-items:center; justify-content:center; transition:all .2s; opacity:0; pointer-events:none; }
+.search-wrap .clear-btn.visible { opacity:1; pointer-events:auto; }
+.search-wrap .clear-btn:hover { background:#e8e8e8; color:var(--text); }
+.search-wrap button { padding:14px 32px; background:var(--accent); color:#fff; border:none; font-size:15px; font-weight:600; cursor:pointer; font-family:inherit; transition:all .2s; white-space:nowrap; }
 .search-wrap button:hover { background:var(--accent2); transform:scale(1.02); }
 .search-wrap button:active { transform:scale(.97); }
 .search-wrap button:disabled { background:#d0d0d0; cursor:not-allowed; transform:none; }
@@ -160,16 +163,38 @@ body {
 .history-tag:hover { background:var(--accent-light); color:var(--accent); }
 .search-highlight { background:var(--accent-light); color:var(--accent); font-weight:600; padding:1px 3px; border-radius:3px; }
 .upload-progress { width:100%; height:6px; background:var(--border); border-radius:3px; margin-top:12px; overflow:hidden; }
-.upload-progress-bar { height:100%; background:var(--accent); border-radius:3px; transition:width .3s; width:0; }
+.upload-progress-bar { height:100%; background:linear-gradient(90deg,#ff6700,#ff8c42,#ffaa00,#ff6700); background-size:200% 100%; border-radius:3px; transition:width .3s; width:0; animation:progressShimmer 2s linear infinite; }
+@keyframes progressShimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
 /* MISC */
 .footer { text-align:center; padding:40px 0; color:var(--text3); font-size:13px; }
 .empty { text-align:center; padding:60px 20px; color:var(--text3); }
-.empty .icon { font-size:48px; margin-bottom:16px; opacity:.3; }
-.empty p { font-size:15px; }
+.empty .icon { font-size:48px; margin-bottom:16px; opacity:.3; transition:all .4s ease; filter:blur(0); }
+.empty:hover .icon { opacity:.5; transform:scale(1.05); filter:blur(0) drop-shadow(0 4px 8px rgba(255,103,0,.12)); }
+.empty p { font-size:15px; font-weight:500; }
 .empty .hint { font-size:13px; margin-top:8px; color:var(--text2); }
 .loading { text-align:center; padding:40px; }
 .spinner { width:32px; height:32px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; margin:0 auto 16px; }
 @keyframes spin { to{transform:rotate(360deg)} }
+/* Fade-in animation for results */
+@keyframes fadeSlideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d0d0d0; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #b0b0b0; }
+.result-card { animation: fadeSlideUp .35s ease both; }
+.result-card:nth-child(1) { animation-delay: 0s; }
+.result-card:nth-child(2) { animation-delay: .05s; }
+.result-card:nth-child(3) { animation-delay: .1s; }
+.result-card:nth-child(4) { animation-delay: .15s; }
+.result-card:nth-child(5) { animation-delay: .2s; }
+.result-card:nth-child(6) { animation-delay: .25s; }
+.result-card:nth-child(7) { animation-delay: .3s; }
+.result-card:nth-child(8) { animation-delay: .35s; }
+.result-card:nth-child(9) { animation-delay: .4s; }
+.result-card:nth-child(10) { animation-delay: .45s; }
+/* Ripple-like focus for search */
+.search-wrap input:focus { box-shadow: inset 0 0 0 2px rgba(255,103,0,.05); }
 @media(max-width:768px){ .nav-inner{flex-direction:column} .search-wrap{flex-direction:column} .stats{grid-template-columns:1fr} .tool-grid,.q-grid{grid-template-columns:1fr} .hero h1{font-size:28px} }
 </style>
 </head>
@@ -200,7 +225,8 @@ body {
 <h1>搜索企业智慧</h1>
 <p>AI 驱动的语义检索，覆盖网络拓扑、产线指标、采购合同、IT 资产等全公司文档。</p>
 <div class="search-wrap">
-<input id="searchInput" placeholder="输入关键词… 如 VLAN 配置、OEE 指标" onkeydown="if(event.key==='Enter')doSearch()">
+<input id="searchInput" placeholder="输入关键词… 如 VLAN 配置、OEE 指标" onkeydown="if(event.key==='Enter')doSearch()" oninput="toggleClearBtn()">
+<button class="clear-btn" id="clearBtn" onclick="clearSearch()" title="清除">✕</button>
 <button onclick="doSearch()" id="searchBtn">搜索</button>
 </div>
 <div class="modes">
@@ -366,7 +392,7 @@ async function refreshStats(){
     var r=await fetchWithTimeout(API()+'/api/stats');var j=await r.json();
     document.getElementById('statFiles').textContent=j.total_files||0;
     document.getElementById('statChunks').textContent=j.total_chunks||0;
-    d.classList.remove('off');l.textContent='在线 · v2.4';
+    d.classList.remove('off');l.textContent='在线 · v'+(j.version||'2.0.0');
   }catch(e){d.classList.add('off');l.textContent='离线'}
 }
 var _searchLock = false; // 防止重复提交
@@ -399,7 +425,9 @@ async function loadHistory(){
     document.getElementById('historyTags').innerHTML=tags;
   }catch(e){}
 }
-function quickSearch(q){document.getElementById('searchInput').value=q;doSearch()}
+function toggleClearBtn(){var b=document.getElementById('clearBtn');var v=document.getElementById('searchInput').value;if(b)b.className=v?'clear-btn visible':'clear-btn'}
+function clearSearch(){document.getElementById('searchInput').value='';toggleClearBtn();document.getElementById('searchInput').focus();document.getElementById('resultsArea').innerHTML='<div class="empty"><div class="icon">🔎</div><p>输入关键词，搜索公司内部文档</p><p class="hint">试试：VLAN 配置、OEE 指标、软件授权</p></div>';document.getElementById('aiArea').style.display='none';document.getElementById('aiArea').innerHTML=''}
+function quickSearch(q){document.getElementById('searchInput').value=q;toggleClearBtn();doSearch()}
 function safeText(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function clearHistory(){document.getElementById('searchHistory').style.display='none';document.getElementById('historyTags').innerHTML='';localStorage.setItem('kb_cleared_history','1')}
 function highlightText(text,query){
@@ -459,7 +487,11 @@ function copyAIAnswer(){
   var t=window._lastAIAnswer||'';
   navigator.clipboard.writeText(t).then(function(){showCopyToast()}).catch(function(){prompt('复制以下内容：',t)});
 }
-function feedbackAI(v){console.log('feedback:',v);alert(v?'感谢反馈！':'已记录，我们会优化检索')}
+function feedbackAI(v){
+  var q=document.getElementById('searchInput').value||'';
+  var ans=window._lastAIAnswer||'';
+  fetchWithTimeout(API()+'/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,answer_preview:ans.substring(0,500),useful:!!v,timestamp:new Date().toISOString()})},5000,0).then(function(){showCopyToast();document.getElementById('copyToast').textContent=v?'✅ 感谢反馈！':'📝 已记录，我们会优化';}).catch(function(){});
+}
 function parseMarkdown(text){
   // 简易 Markdown 渲染（代码块、标题、列表、引用）
   var lines=text.split('\n');
@@ -485,22 +517,23 @@ function parseMarkdown(text){
   out=out.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
   return out;
 }
-async function kwSearch(q){
+var _lastQuery=''; var _lastPage=1;
+async function kwSearch(q,p){
+  p=p||1; _lastQuery=q; _lastPage=p;
   try{
-    var r=await fetchWithTimeout(API()+'/api/search?q='+encodeURIComponent(q)+'&top_k=15');var d=await r.json();
+    var r=await fetchWithTimeout(API()+'/api/search?q='+encodeURIComponent(q)+'&top_k=15&page='+p+'&page_size=8');var d=await r.json();
     if(!d.results||!d.results.length){document.getElementById('resultsArea').innerHTML='<div class="empty"><div class="icon">🔍</div><p>未找到相关结果</p><p class="hint">试试其他关键词，或切换到智能问答</p></div>';return}
     var tm={verified:['已验证','verified'],unverified:['未验证','unverified'],outdated:['已过时','outdated'],flagged:['待审核','flagged']};
-    var h='<div style="display:flex;justify-content:space-between;margin-bottom:14px;font-size:13px;color:var(--text2);align-items:center"><span>找到 <strong style="color:var(--text)">'+d.results.length+'</strong> 条结果</span></div>';
+    var total=d.total||d.results.length; var tp=d.total_pages||1;
+    var h='<div style="display:flex;justify-content:space-between;margin-bottom:14px;font-size:13px;color:var(--text2);align-items:center"><span>找到 <strong style="color:var(--text)">'+total+'</strong> 条结果（第 '+p+'/'+tp+' 页）</span></div>';
     for(var i=0;i<d.results.length;i++){
       var it=d.results[i],t=tm[it.trust]||['未知',''];
       var full=(it.text||it.text_preview||'');
       var preview=full.substring(0,300).replace(/</g,'&lt;').replace(/>/g,'&gt;');
       var score=it.score||0;
       var scoreClass=score>0.8?'high':'',scorePct=Math.round(Math.min(score*100,100));
-      // 识别配置行加等宽
       preview=highlightText(preview,q);
       preview=cfgHighlight(preview);
-      // 卡片
       h+='<div class="result-card" id="card'+i+'"><div class="rc-header"><div class="rc-file">📄 <span>'+escapeHtml(it.file_name||'未知文件')+'</span></div><div class="rc-score '+scoreClass+'">★ '+scorePct+'%</div></div>';
       h+='<div class="result-meta"><span class="trust-badge '+t[1]+'">'+t[0]+'</span><span class="tag-pill">'+(it.category||'未分类')+'</span>';
       if(it.tags&&it.tags.length)for(var k=0;k<Math.min(it.tags.length,3);k++)h+='<span class="tag-pill">#'+it.tags[k]+'</span>';
@@ -510,8 +543,13 @@ async function kwSearch(q){
       else h+='<div class="result-actions"><button class="btn-sm" onclick="copyCard('+i+')">📋 复制</button></div>';
       if(it.audit_note)h+='<div style="font-size:11px;color:var(--accent);margin-top:4px;font-style:italic">'+it.audit_note+'</div>';
       h+='</div>';
-      // 存储全文用于展开/复制
       window['_cardFull'+i]=full;
+    }
+    if(tp>1){h+='<div style="display:flex;justify-content:center;gap:8px;margin-top:18px">';
+      h+='<button class="btn-sm" '+(p<=1?'disabled':'onclick="kwSearch(\''+q.replace(/'/g,"\\'")+'\','+(p-1)+')"')+'>◀ 上一页</button>';
+      h+='<span style="padding:5px 12px;font-size:13px;color:var(--text3);align-self:center">'+p+' / '+tp+'</span>';
+      h+='<button class="btn-sm" '+(p>=tp?'disabled':'onclick="kwSearch(\''+q.replace(/'/g,"\\'")+'\','+(p+1)+')"')+'>下一页 ▶</button>';
+      h+='</div>';
     }
     document.getElementById('resultsArea').innerHTML=h;
   }catch(e){document.getElementById('resultsArea').innerHTML='<div class="empty"><p style="color:var(--red)">连接失败</p><p class="hint">请检查服务器地址</p></div>'}
@@ -653,7 +691,34 @@ function pollTask(taskId,fileName,resolve,bar,idx,total){
   };
   poll();
 }
-function renderTools(){
+async function renderTools(){
+  var g=document.getElementById('toolGrid');if(!g)return;
+  try{
+    var r=await fetchWithTimeout(API()+'/api/tools',null,5000,1);var d=await r.json();
+    var tools=d.tools||ALL_TOOLS;
+    var h='';for(var i=0;i<tools.length;i++){var t=tools[i];h+='<div class="tool-card" onclick="openTool(\''+t.id+'\')"><div class="tc-icon">'+t.icon+'</div><div><h3>'+t.name+(t.available===false?' <span style="font-size:10px;color:var(--red);font-weight:400">(不可用)</span>':'')+'</h3><p>'+t.desc+'</p></div></div>'}
+    g.innerHTML=h;
+    checkToolsStatus(tools);
+  }catch(e){renderToolsFallback()}
+}
+function checkToolsStatus(tools){
+  fetchWithTimeout(API()+'/api/tools/check',null,15000,0).then(function(r){return r.json()}).then(function(d){
+    var results=d.results||[];
+    var cards=document.querySelectorAll('.tool-card');
+    for(var i=0;i<tools.length;i++){
+      var t=tools[i];var chk=results.find(function(x){return x.id===t.id});
+      if(!chk||!cards[i])continue;
+      var badge='';
+      if(chk.reachable===true)badge=' <span style="font-size:10px;color:var(--green);margin-left:4px">● '+chk.latency_ms+'ms</span>';
+      else if(chk.reachable===false)badge=' <span style="font-size:10px;color:var(--red);margin-left:4px">● 不可达</span>';
+      if(badge&&cards[i]){
+        var p=cards[i].querySelector('p');
+        if(p)p.innerHTML+=badge;
+      }
+    }
+  }).catch(function(){});
+}
+function renderToolsFallback(){
   var g=document.getElementById('toolGrid');if(!g)return;
   var h='';for(var i=0;i<ALL_TOOLS.length;i++){var t=ALL_TOOLS[i];h+='<div class="tool-card" onclick="openTool(\''+t.id+'\')"><div class="tc-icon">'+t.icon+'</div><div><h3>'+t.name+'</h3><p>'+t.desc+'</p></div></div>'}
   g.innerHTML=h;
@@ -672,13 +737,30 @@ var TOOL_URLS={
   erp:{name:'ERP 系统',url:'#erp',desc:'请联系管理员获取 ERP 地址'},
   monitor:{name:'网络监控',url:'#monitor',desc:'请联系 IT 获取监控地址'}
 };
-function openTool(id){
-  var t=TOOL_URLS[id];if(!t){alert('工具未配置');return}
-  if(t.url.startsWith('\\\\')){alert(t.name+'\n\n'+t.url);return}
-  if(t.url.startsWith('#')){alert(t.name+'\n\n'+t.desc+'\n\nURL 待配置');return}
-  window.open(t.url,'_blank');
+async function openTool(id){
+  // 先从后端获取的工具列表中查找
+  try{
+    var r=await fetchWithTimeout(API()+'/api/tools',null,3000,0);var d=await r.json();
+    var tools=d.tools||[];
+    var t=tools.find(function(x){return x.id===id});
+    if(t){if(t.url&&!t.url.startsWith('#')){if(t.url.startsWith('\\\\')){alert(t.name+'\n\n'+t.url);return}window.open(t.url,'_blank');return}else{alert(t.name+'\n\n'+t.desc+'\n\n'+(t.available?'':'暂不可用'));return}}
+  }catch(e){}
+  // 回退到本地 TOOL_URLS
+  var t2=TOOL_URLS[id];if(!t2){alert('工具未配置');return}
+  if(t2.url.startsWith('\\\\')){alert(t2.name+'\n\n'+t2.url);return}
+  if(t2.url.startsWith('#')){alert(t2.name+'\n\n'+t2.desc+'\n\nURL 待配置');return}
+  window.open(t2.url,'_blank');
 }
-function renderQuestions(){
+async function renderQuestions(){
+  var g=document.getElementById('qGrid');if(!g)return;
+  try{
+    var r=await fetchWithTimeout(API()+'/api/faq',null,5000,1);var d=await r.json();
+    var faq=d.faq||QUESTIONS;
+    var h='';for(var i=0;i<faq.length;i++){var qi=faq[i];h+='<div class="q-item" onclick="quickAsk(\''+(qi.question||qi.q).replace(/'/g,"\\'")+'\')"><span class="q-cat">'+(qi.category||qi.cat)+'</span><span class="q-text">'+(qi.question||qi.q)+'</span></div>'}
+    g.innerHTML=h;
+  }catch(e){renderQuestionsFallback()}
+}
+function renderQuestionsFallback(){
   var g=document.getElementById('qGrid');if(!g)return;var h='';
   for(var i=0;i<QUESTIONS.length;i++){var qi=QUESTIONS[i];h+='<div class="q-item" onclick="quickAsk(\''+qi.q.replace(/'/g,"\\'")+'\')"><span class="q-cat">'+qi.cat+'</span><span class="q-text">'+qi.q+'</span></div>'}
   g.innerHTML=h;
