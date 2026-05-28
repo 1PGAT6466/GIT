@@ -183,7 +183,7 @@ body {
 
 <div class="container">
 <div class="config-bar">
-<label>服务器</label><input id="apiBase" value="http://172.25.30.200:8080" onchange="refreshStats()">
+<label>服务器</label><input id="apiBase" onchange="refreshStats()">
 <label id="keyLabel">Mimo Key</label><input type="password" id="mimoKey" placeholder="首次使用需输入…" onchange="saveKey()">
 </div>
 <div class="stats">
@@ -242,6 +242,52 @@ body {
 </div>
 
 <script>
+// ====== 稳定性核心：fetch 超时 + 重试 + 全局错误边界 ======
+var FETCH_TIMEOUT = 15000;
+var FETCH_RETRIES = 2;
+var MAX_POLL_RETRIES = 30;
+function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+async function fetchWithTimeout(url, options, timeoutMs, retries) {
+  timeoutMs = timeoutMs || FETCH_TIMEOUT;
+  retries = retries != null ? retries : FETCH_RETRIES;
+  var lastErr = null;
+  for (var attempt = 0; attempt <= retries; attempt++) {
+    try {
+      var controller = new AbortController();
+      var timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+      var fetchOpts = Object.assign({}, options || {}, { signal: controller.signal });
+      var resp = await fetch(url, fetchOpts);
+      clearTimeout(timer);
+      if (!resp.ok && attempt < retries && resp.status >= 500) {
+        await sleep(1000 * (attempt + 1));
+        continue;
+      }
+      return resp;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < retries) await sleep(1500 * (attempt + 1));
+    }
+  }
+  throw lastErr || new Error('请求失败（已重试' + FETCH_RETRIES + '次）');
+}
+
+window.onerror = function(msg, url, line, col, err) {
+  console.error('全局错误:', msg, line, err);
+  return false;
+};
+window.onunhandledrejection = function(event) {
+  console.error('未处理Promise拒绝:', event.reason);
+};
+
+function getApiBase() {
+  var cached = localStorage.getItem('kb_api_base');
+  return cached || window.location.origin;
+}
+function saveApiBase(url) {
+  if (url && url !== window.location.origin) localStorage.setItem('kb_api_base', url);
+}
+
 var API=function(){return document.getElementById('apiBase').value};
 var KEY=function(){return localStorage.getItem('pk_key')||''};
 function escapeHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
@@ -278,6 +324,12 @@ var QUESTIONS=[
   {cat:'标准件',q:'标准件表中包含哪些供应商？各供应商提供的主要产品类型是什么？'}
 ];
 (function init(){
+  // 自动设置 API 地址为当前访问地址
+  var apiInp=document.getElementById('apiBase');
+  var cached=getApiBase();
+  apiInp.value=cached||window.location.origin;
+  apiInp.addEventListener('change',function(){refreshStats();saveApiBase(this.value)});
+
   var s=localStorage.getItem('pk_key');
   if(s){document.getElementById('mimoKey').value=s;updateKeyUI()}
   refreshStats();renderTools();renderQuestions();loadHistory();
@@ -308,14 +360,17 @@ if(m==='ai'){document.getElementById('aiArea').style.display='block'}
 async function refreshStats(){
   var d=document.getElementById('statusDot'),l=document.getElementById('statusLabel');
   try{
-    var r=await fetch(API()+'/api/stats');var j=await r.json();
+    var r=await fetchWithTimeout(API()+'/api/stats');var j=await r.json();
     document.getElementById('statFiles').textContent=j.total_files||0;
     document.getElementById('statChunks').textContent=j.total_chunks||0;
     d.classList.remove('off');l.textContent='在线 · v2.4';
   }catch(e){d.classList.add('off');l.textContent='离线'}
 }
+var _searchLock = false; // 防止重复提交
 async function doSearch(){
+  if (_searchLock) return;
   var q=document.getElementById('searchInput').value.trim();if(!q)return;
+  _searchLock = true;
   document.getElementById('searchBtn').disabled=true;
   if(mode==='ai'){
     document.getElementById('aiArea').style.display='block';
@@ -326,21 +381,23 @@ async function doSearch(){
     document.getElementById('resultsArea').innerHTML='<div class="loading"><div class="spinner"></div></div>';await kwSearch(q);
   }
   document.getElementById('searchBtn').disabled=false;
+  _searchLock = false;
   // 刷新搜索历史
   setTimeout(loadHistory,500);
 }
 async function loadHistory(){
   try{
-    var r=await fetch(API()+'/api/search-history');var d=await r.json();
+    var r=await fetchWithTimeout(API()+'/api/search-history');var d=await r.json();
     var hist=d.history||[];
     if(hist.length===0){document.getElementById('searchHistory').style.display='none';return}
     document.getElementById('searchHistory').style.display='block';
     var tags='';
-    for(var i=0;i<hist.length;i++){tags+='<span class="history-tag" onclick="quickSearch(\''+hist[i].replace(/'/g,"\\'")+'\')">'+hist[i]+'</span>'}
+    for(var i=0;i<hist.length;i++){tags+='<span class="history-tag" onclick="quickSearch(\''+safeText(hist[i])+'\')">'+escapeHtml(hist[i])+'</span>'}
     document.getElementById('historyTags').innerHTML=tags;
   }catch(e){}
 }
 function quickSearch(q){document.getElementById('searchInput').value=q;doSearch()}
+function safeText(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function clearHistory(){document.getElementById('searchHistory').style.display='none';document.getElementById('historyTags').innerHTML='';localStorage.setItem('kb_cleared_history','1')}
 function highlightText(text,query){
   if(!query)return text;
@@ -356,12 +413,12 @@ async function aiSearch(q){
   // 骨架屏
   document.getElementById('aiArea').innerHTML='<div class="ai-box"><div class="ai-header"><div class="ai-dot"></div>智能回答</div><div class="ai-skeleton"><div class="sk-line"></div><div class="sk-line"></div><div class="sk-line"></div><div class="sk-line"></div></div></div>';
   try{
-    var sr=await fetch(API()+'/api/search?q='+encodeURIComponent(q)+'&top_k=5');var sd=await sr.json();
+    var sr=await fetchWithTimeout(API()+'/api/search?q='+encodeURIComponent(q)+'&top_k=5');var sd=await sr.json();
     var cs=sd.results||[];if(!cs.length){document.getElementById('aiArea').innerHTML='<div class="empty"><p>知识库中未找到相关文档</p></div>';return}
     // 构建 prompt（用完整 parent text，不截断）
     var ctx='';for(var i=0;i<cs.length;i++)ctx+='[Ref '+(i+1)+'] '+cs[i].file_name+'\n'+(cs[i].text||cs[i].text_preview||'')+'\n\n---\n\n';
     var sys='你是宝利根知识库 AI 助手。\n\n规则：\n1. 仅依据下方文档内容作答，不要编造信息。\n2. 回答中引用文档时使用 [Ref N] 标注来源编号。\n3. 用 Markdown 格式输出：标题、列表、代码块、引用。\n4. 网络配置用 \`\`\` 代码块包裹。\n5. 如果文档信息不足以回答问题，明确说明"根据现有知识库，未找到相关信息"。\n\n文档：\n'+ctx;
-    var mr=await fetch('https://api.xiaomimimo.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},body:JSON.stringify({model:'mimo-v2-omni',temperature:.1,messages:[{role:'system',content:sys},{role:'user',content:q}]})});
+    var mr=await fetchWithTimeout('https://api.xiaomimimo.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},body:JSON.stringify({model:'mimo-v2-omni',temperature:.1,messages:[{role:'system',content:sys},{role:'user',content:q}]})},30000,1);
     var md=await mr.json();if(!mr.ok)throw new Error((md.error&&md.error.message)||'API 错误 '+mr.status);
     var a=md.choices&&md.choices[0]?(md.choices[0].message.content||'无响应'):'无响应';
     renderAIAnswer(a,cs);
@@ -427,7 +484,7 @@ function parseMarkdown(text){
 }
 async function kwSearch(q){
   try{
-    var r=await fetch(API()+'/api/search?q='+encodeURIComponent(q)+'&top_k=15');var d=await r.json();
+    var r=await fetchWithTimeout(API()+'/api/search?q='+encodeURIComponent(q)+'&top_k=15');var d=await r.json();
     if(!d.results||!d.results.length){document.getElementById('resultsArea').innerHTML='<div class="empty"><div class="icon">🔍</div><p>未找到相关结果</p><p class="hint">试试其他关键词，或切换到智能问答</p></div>';return}
     var tm={verified:['已验证','verified'],unverified:['未验证','unverified'],outdated:['已过时','outdated'],flagged:['待审核','flagged']};
     var h='<div style="display:flex;justify-content:space-between;margin-bottom:14px;font-size:13px;color:var(--text2);align-items:center"><span>找到 <strong style="color:var(--text)">'+d.results.length+'</strong> 条结果</span></div>';
@@ -549,8 +606,15 @@ function uploadOneFile(file,bar,idx,total){
 }
 function pollTask(taskId,fileName,resolve,bar,idx,total){
   if(!taskId){resolve(false);return}
+  var pollCount = 0;
   var poll=function(){
-    fetch(API()+'/api/task/'+taskId).then(function(r){return r.json()}).then(function(d){
+    pollCount++;
+    if (pollCount > MAX_POLL_RETRIES) {
+      console.error('Task poll timeout:', taskId);
+      resolve(false);
+      return;
+    }
+    fetchWithTimeout(API()+'/api/task/'+taskId).then(function(r){return r.json()}).then(function(d){
       if(d.status==='done'){
         bar.style.width=Math.round(((idx+1)/total)*100)+'%';
         resolve(true);
@@ -558,7 +622,6 @@ function pollTask(taskId,fileName,resolve,bar,idx,total){
         console.error('Task error:',d.message);
         resolve(false);
       }else{
-        // 更新进度条
         var filePct=d.progress||0;
         var overallPct=Math.round(((idx*100)+filePct)/(total*100)*100);
         bar.style.width=overallPct+'%';
@@ -599,6 +662,9 @@ function renderQuestions(){
   g.innerHTML=h;
 }
 function quickAsk(q){document.getElementById('searchInput').value=q;switchPage('kb',document.querySelector('.nav-tab'));setMode('search',document.querySelector('.mode-btn'));doSearch()}
+// API地址变更时自动缓存
+var apiInput=document.getElementById('apiBase');
+if(apiInput){apiInput.addEventListener('change',function(){saveApiBase(this.value)})}
 document.addEventListener('keydown',function(e){if(e.ctrlKey&&e.key==='k'){e.preventDefault();document.getElementById('searchInput').focus()}});
 </script>
 </body>
