@@ -660,6 +660,18 @@ def _process_file_async(file_path: str, file_name: str, file_hash: str, ext: str
         _upload_semaphore.release()
 
 
+def _parse_iso(ts_str: str) -> float:
+    """解析 ISO 时间戳为 Unix 时间戳，容错处理"""
+    try:
+        if not ts_str:
+            return 0
+        from datetime import timezone as _tz
+        dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        return dt.timestamp()
+    except Exception:
+        return 0
+
+
 def _update_task(task_id: str, status: str, progress: int, message: str):
     with _task_lock:
         if task_id in _task_store:
@@ -667,6 +679,14 @@ def _update_task(task_id: str, status: str, progress: int, message: str):
                 "status": status, "progress": progress, "message": message,
                 "updated_at": datetime.now(timezone.utc).isoformat()
             })
+            # v4.0: 清理已完成/失败的任务（超过1小时的），防止内存泄漏
+            now_ts = time.time()
+            stale = [tid for tid, t in _task_store.items()
+                     if t.get("status") in ("done", "error")
+                     and tid != task_id
+                     and now_ts - _parse_iso(t.get("created_at", "")) > 3600]
+            for tid in stale:
+                del _task_store[tid]
 
 
 # ============ 结构感知分片 (P0) ============
@@ -2304,7 +2324,7 @@ async def get_tools():
 @app.get("/api/tools/check")
 async def check_tools_availability():
     """检测所有工具 URL 的可达性（异步并发）"""
-    import asyncio, concurrent.futures
+    import asyncio
     cfg = _load_config()
     tools = cfg.get("tools", TOOLS_DATA)
 
@@ -2319,8 +2339,9 @@ async def check_tools_availability():
             t0 = time.time()
             req = urllib.request.Request(url, method="HEAD")
             loop = asyncio.get_event_loop()
+            # v4.0: 复用默认 executor，不再每次创建新 ThreadPoolExecutor，防止线程泄漏
             resp = await loop.run_in_executor(
-                concurrent.futures.ThreadPoolExecutor(max_workers=1),
+                None,
                 lambda: urllib.request.urlopen(req, timeout=5)
             )
             elapsed = (time.time() - t0) * 1000
@@ -2641,4 +2662,14 @@ async def reset_collection(request: Request):
 if __name__ == "__main__":
     import uvicorn
     max_body = int(os.getenv("KB_MAX_FILE_MB", "200")) * 1024 * 1024
-    uvicorn.run(app, host=HOST, port=PORT, log_level="info", limit_max_requests=5000, timeout_keep_alive=120, limit_concurrency=30, backlog=128, h11_max_incomplete_event_size=16384)
+    workers = int(os.getenv("KB_WORKERS", "1"))
+    limit_max_req = int(os.getenv("KB_LIMIT_MAX_REQUESTS", "5000"))
+    limit_conc = int(os.getenv("KB_LIMIT_CONCURRENCY", "30"))
+    timeout_ka = int(os.getenv("KB_TIMEOUT_KEEP_ALIVE", "120"))
+    # v4.0: 关键参数通过环境变量配置，确保 systemd 启动也生效
+    uvicorn.run(app, host=HOST, port=PORT, log_level="info",
+                limit_max_requests=limit_max_req,
+                timeout_keep_alive=timeout_ka,
+                limit_concurrency=limit_conc,
+                backlog=128,
+                h11_max_incomplete_event_size=16384)

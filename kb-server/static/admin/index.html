@@ -241,8 +241,8 @@ function initDashboard() {
     document.getElementById('dashCards').innerHTML =
       '<div class="sc"><div class="si oc">📄</div><div><div class="sv">' + (d.totalFiles || 0) + '</div><div class="sl">文档总数</div><div class="st neutral">📂 已索引</div></div></div>' +
       '<div class="sc"><div class="si bc">✂️</div><div><div class="sv">' + (d.totalChunks || 0) + '</div><div class="sl">文本片段</div><div class="st neutral">📊 ' + avgChunks + ' 片段/文件</div></div></div>' +
-      '<div class="sc"><div class="si gc">💾</div><div><div class="sv">' + fmtSize(d.dbSize || 0) + '</div><div class="sl">数据库大小</div><div class="st neutral">FAISS 索引</div></div></div>' +
-      '<div class="sc"><div class="si pc">📦</div><div><div class="sv">' + Object.keys(d.formatDistribution || {}).length + '</div><div class="sl">文件类型数</div><div class="st neutral">已覆盖格式</div></div></div>';
+      '<div class="sc"><div class="si gc">💾</div><div><div class="sv">' + fmtSize(d.dbSize || 0) + '</div><div class="sl">数据库大小</div><div class="st neutral"><span class="live-dot"></span>FAISS 索引</div></div></div>' +
+      '<div class="sc"><div class="si pc">📦</div><div><div class="sv">' + Object.keys(d.formatDistribution || {}).length + '</div><div class="sl">文件类型数</div><div class="st neutral">' + Object.keys(d.formatDistribution || {}).join(', ') + '</div></div></div>';
 
     var fmt = d.formatDistribution || {};
     if (Object.keys(fmt).length) {
