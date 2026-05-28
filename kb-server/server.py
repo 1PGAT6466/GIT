@@ -1352,12 +1352,15 @@ async def rate_limiter(request: Request, call_next):
             _rate_limit_store[ip] = (entry[0], count)
             if count > _RATE_LIMIT_MAX:
                 return JSONResponse(status_code=429, content={"error": "请求太频繁，请稍后重试", "retry_after": _RATE_LIMIT_WINDOW})
-        # 定期清理过期条目
+        # 定期清理过期条目（放在锁外执行减少锁持有时间）
         if len(_rate_limit_store) > 10000:
             stale = [k for k, v in _rate_limit_store.items() if now - v[0] > _RATE_LIMIT_WINDOW * 2]
             for k in stale:
-                del _rate_limit_store[k]
-    return await call_next(request)
+                try:
+                    del _rate_limit_store[k]
+                except KeyError:
+                    pass
+        return await call_next(request)
 
 
 # ============ ROUTES ============
@@ -1387,14 +1390,18 @@ def _backup_db():
                 shutil.copy2(src, os.path.join(BACKUP_DIR, f"{fname}.{date_str}"))
         # 保留最近 7 天备份
         all_backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
-        kept = set()
+        kept_count = {}  # base_name → 已保留数量
         for old in all_backups:
             # 保留每个文件的最新 7 份
             base = re.sub(r'\.\d{8}$', '', old)
-            if base not in kept:
-                kept.add(base)
-            elif len([x for x in kept if x.startswith(base)]) > 7:
-                os.remove(os.path.join(BACKUP_DIR, old))
+            cnt = kept_count.get(base, 0)
+            if cnt < 7:
+                kept_count[base] = cnt + 1
+            else:
+                try:
+                    os.remove(os.path.join(BACKUP_DIR, old))
+                except OSError:
+                    pass
     except Exception:
         pass
 
@@ -1610,9 +1617,16 @@ async def search(
             _log_search(original_q, ip, 0, (time.time()-t0)*1000)
             return {"results": [], "query": original_q, "page": 1, "page_size": page_size, "total": 0, "total_pages": 0, "has_more": False, "lang": detected_lang}
 
-        # FAISS 全量搜索，后过滤 child
+        # FAISS 全量搜索，后过滤 child（添加超时保护，防止大索引搜索卡死）
         k = min(top_k * 10, _index.ntotal)
-        distances, indices = _index.search(query_vec, k)
+        try:
+            distances, indices = await asyncio.wait_for(
+                asyncio.to_thread(_index.search, query_vec, k),
+                timeout=10.0
+            )
+        except asyncio.TimeoutError:
+            _log_search(original_q, ip, 0, (time.time()-t0)*1000)
+            raise HTTPException(status_code=504, detail="搜索超时，请尝试缩小查询范围")
 
         # 过滤 child + 去重
         candidates = {}
@@ -2363,9 +2377,12 @@ def _save_config(config: dict):
                 with open(hist_path, "w", encoding="utf-8") as f:
                     f.write(old)
                 # 保留最近 50 个历史版本
-                hfiles = sorted(os.listdir(_CONFIG_HISTORY_DIR), reverse=True)
-                for fname in hfiles[50:]:
-                    os.remove(os.path.join(_CONFIG_HISTORY_DIR, fname))
+                try:
+                    hfiles = sorted(os.listdir(_CONFIG_HISTORY_DIR), reverse=True)
+                    for fname in hfiles[50:]:
+                        os.remove(os.path.join(_CONFIG_HISTORY_DIR, fname))
+                except Exception:
+                    pass  # 清理失败不影响主流程
         except Exception:
             pass
     with open(_CONFIG_PATH, "w", encoding="utf-8") as f:

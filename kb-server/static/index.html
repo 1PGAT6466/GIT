@@ -171,8 +171,8 @@ body {
 /* MISC */
 .footer { text-align:center; padding:40px 0; color:var(--text3); font-size:13px; }
 .empty { text-align:center; padding:60px 20px; color:var(--text3); }
-.empty .icon { font-size:48px; margin-bottom:16px; opacity:.3; transition:all .4s ease; filter:blur(0); }
-.empty:hover .icon { opacity:.5; transform:scale(1.05); filter:blur(0) drop-shadow(0 4px 8px rgba(255,103,0,.12)); }
+.empty .icon { font-size:56px; margin-bottom:16px; opacity:.25; transition:all .5s cubic-bezier(.4,0,.2,1); filter:grayscale(.3); display:inline-block; }
+.empty:hover .icon { opacity:.5; transform:scale(1.08) rotate(3deg); filter:grayscale(0) drop-shadow(0 6px 16px rgba(255,103,0,.15)); }
 .empty p { font-size:15px; font-weight:500; }
 .empty .hint { font-size:13px; margin-top:8px; color:var(--text2); }
 .loading { text-align:center; padding:40px; }
@@ -399,9 +399,12 @@ async function refreshStats(){
   }catch(e){d.classList.add('off');l.textContent='离线'}
 }
 var _searchLock = false; // 防止重复提交
+var _debounceTimer = null;  // 搜索防抖
 async function doSearch(){
   if (_searchLock) return;
   var q=document.getElementById('searchInput').value.trim();if(!q)return;
+  // 清除防抖定时器
+  if (_debounceTimer) { clearTimeout(_debounceTimer); _debounceTimer = null; }
   _searchLock = true;
   document.getElementById('searchBtn').disabled=true;
   if(mode==='ai'){
@@ -430,7 +433,13 @@ async function loadHistory(){
 }
 function toggleClearBtn(){var b=document.getElementById('clearBtn');var v=document.getElementById('searchInput').value;if(b)b.className=v?'clear-btn visible':'clear-btn'}
 function clearSearch(){document.getElementById('searchInput').value='';toggleClearBtn();document.getElementById('searchInput').focus();document.getElementById('resultsArea').innerHTML='<div class="empty"><div class="icon">🔎</div><p>输入关键词，搜索公司内部文档</p><p class="hint">试试：VLAN 配置、OEE 指标、软件授权</p></div>';document.getElementById('aiArea').style.display='none';document.getElementById('aiArea').innerHTML=''}
-function quickSearch(q){document.getElementById('searchInput').value=q;toggleClearBtn();doSearch()}
+function quickSearch(q){
+  document.getElementById('searchInput').value=q;
+  toggleClearBtn();
+  // 防抖：快速点击 FAQ 时延迟 300ms 再搜索
+  if (_debounceTimer) clearTimeout(_debounceTimer);
+  _debounceTimer = setTimeout(function(){ _debounceTimer = null; doSearch(); }, 300);
+}
 function safeText(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function clearHistory(){document.getElementById('searchHistory').style.display='none';document.getElementById('historyTags').innerHTML='';localStorage.setItem('kb_cleared_history','1')}
 function highlightText(text,query){
