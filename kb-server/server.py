@@ -2026,8 +2026,12 @@ async def admin_recent_activities():
 
 # ============ MAIN ============
 @app.post("/api/reset")
-async def reset_collection():
-    """清空知识库所有数据"""
+async def reset_collection(request: Request):
+    """清空知识库所有数据（需要管理令牌）"""
+    token = request.headers.get("x-admin-token", "")
+    expected = os.getenv("KB_ADMIN_TOKEN", "polygon-admin-2024")
+    if token != expected:
+        raise HTTPException(status_code=403, detail="需要管理令牌")
     try:
         count = _index.ntotal if _index else 0
         _reset_index()

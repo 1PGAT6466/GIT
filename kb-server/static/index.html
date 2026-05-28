@@ -61,17 +61,20 @@ body {
 .hero { text-align:center; padding:48px 0 40px; background:var(--card); border-radius:24px; margin-bottom:32px; box-shadow:var(--shadow); }
 .hero h1 { font-size:40px; font-weight:800; margin-bottom:12px; }
 .hero p { font-size:16px; color:var(--text2); max-width:500px; margin:0 auto 32px; }
-.search-wrap { max-width:600px; margin:0 auto; display:flex; background:#fafafa; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
-.search-wrap:focus-within { border-color:var(--accent); box-shadow:0 0 0 4px rgba(255,103,0,.06); }
-.search-wrap input { flex:1; background:transparent; border:none; outline:none; padding:14px 20px; font-size:15px; color:var(--text); font-family:inherit; }
-.search-wrap input::placeholder { color:var(--text3); }
-.search-wrap button { padding:14px 32px; background:var(--accent); color:#fff; border:none; font-size:15px; font-weight:600; cursor:pointer; font-family:inherit; }
-.search-wrap button:hover { background:var(--accent2); }
-.search-wrap button:disabled { background:#d0d0d0; cursor:not-allowed; }
+.search-wrap { max-width:600px; margin:0 auto; display:flex; background:#fafafa; border:1px solid var(--border); border-radius:12px; overflow:hidden; transition:all .3s ease; }
+.search-wrap:focus-within { border-color:var(--accent); box-shadow:0 0 0 4px rgba(255,103,0,.06); transform:scale(1.01); }
+.search-wrap input { flex:1; background:transparent; border:none; outline:none; padding:14px 20px; font-size:15px; color:var(--text); font-family:inherit; transition:all .2s; }
+.search-wrap input::placeholder { color:var(--text3); transition:color .3s; }
+.search-wrap:focus-within input::placeholder { color:#ccc; }
+.search-wrap button { padding:14px 32px; background:var(--accent); color:#fff; border:none; font-size:15px; font-weight:600; cursor:pointer; font-family:inherit; transition:all .2s; }
+.search-wrap button:hover { background:var(--accent2); transform:scale(1.02); }
+.search-wrap button:active { transform:scale(.97); }
+.search-wrap button:disabled { background:#d0d0d0; cursor:not-allowed; transform:none; }
 .modes { display:flex; gap:6px; justify-content:center; margin-top:16px; }
-.mode-btn { padding:8px 22px; border-radius:20px; font-size:13px; cursor:pointer; font-family:inherit; border:1px solid var(--border); background:var(--card); color:var(--text2); }
-.mode-btn:hover { border-color:var(--accent); color:var(--accent); }
-.mode-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.mode-btn { padding:8px 22px; border-radius:20px; font-size:13px; cursor:pointer; font-family:inherit; border:1px solid var(--border); background:var(--card); color:var(--text2); transition:all .25s ease; }
+.mode-btn:hover { border-color:var(--accent); color:var(--accent); transform:translateY(-1px); }
+.mode-btn:active { transform:scale(.95); }
+.mode-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); box-shadow:0 2px 8px rgba(255,103,0,.25); }
 /* PAGE */
 .page-sec { display:none; }
 .page-sec.active { display:block; }
@@ -454,7 +457,7 @@ function toggleSource(idx){
 }
 function copyAIAnswer(){
   var t=window._lastAIAnswer||'';
-  navigator.clipboard.writeText(t).then(function(){alert('已复制')}).catch(function(){prompt('复制以下内容：',t)});
+  navigator.clipboard.writeText(t).then(function(){showCopyToast()}).catch(function(){prompt('复制以下内容：',t)});
 }
 function feedbackAI(v){console.log('feedback:',v);alert(v?'感谢反馈！':'已记录，我们会优化检索')}
 function parseMarkdown(text){
@@ -532,7 +535,26 @@ function copyCard(idx){
   var t=window['_cardFull'+idx]||'';
   var fname=document.querySelector('#card'+idx+' .rc-file span');
   var fn=fname?fname.textContent:'';
-  navigator.clipboard.writeText((fn?'['+fn+']\n':'')+t).then(function(){}).catch(function(){});
+  navigator.clipboard.writeText((fn?'['+fn+']\n':'')+t).then(function(){
+    showCopyToast();
+  }).catch(function(){});
+}
+function showCopyToast() {
+  var toast = document.getElementById('copyToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'copyToast';
+    toast.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 24px;border-radius:20px;font-size:13px;z-index:9999;transition:all .3s ease;opacity:0;pointer-events:none';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = '✅ 已复制到剪贴板';
+  toast.style.opacity = '1';
+  toast.style.bottom = '40px';
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(function() {
+    toast.style.opacity = '0';
+    toast.style.bottom = '30px';
+  }, 1500);
 }
 function cfgHighlight(text){
   // 识别网络配置命令并加等宽字体

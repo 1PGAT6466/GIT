@@ -138,6 +138,9 @@ render();
 })();
 
 function render() {
+  // 清理之前页面的定时器
+  if (_tasksTimer) { clearInterval(_tasksTimer); _tasksTimer = null; }
+  if (_svrTimer) { clearInterval(_svrTimer); _svrTimer = null; }
   var v = document.getElementById('view');
   v.innerHTML = '<div class="loading">加载中...</div>';
   switch (hash()) {
@@ -237,10 +240,12 @@ function refreshUploads() {
 }
 
 /* ============ 任务队列 (新增) ============ */
+var _tasksTimer = null;
 function tasksView(v) {
+  if (_tasksTimer) { clearInterval(_tasksTimer); _tasksTimer = null; }
   v.innerHTML = '<h3>⏳ 处理任务</h3><div class="card"><div class="ch">后台任务</div><div class="cb" id="tlist"><div class="loading">加载中...</div></div></div>';
   refreshTasks();
-  setInterval(function() {
+  _tasksTimer = setInterval(function() {
     if (hash() === 'tasks') refreshTasks();
   }, 3000);
 }
@@ -302,7 +307,7 @@ function initStats() {
   fetch(API + '/api/admin/ai-search-logs').then(function(r) { return r.json(); }).then(function(d) {
     var daily = {};
     (d || []).forEach(function(l) {
-      var dt = new Date(l.timestamp || l.created_at).toLocaleDateString('zh-CN');
+      var dt = new Date(l.timestamp || l.created_at).toLocaleDateString('zh-CN', {month:'short',day:'numeric'});
       daily[dt] = (daily[dt] || 0) + 1;
     });
     var dd = Object.entries(daily).slice(-7);
@@ -317,7 +322,9 @@ function initStats() {
 }
 
 /* ============ 服务器监控 ============ */
+var _svrTimer = null;
 function serverView(v) {
+  if (_svrTimer) { clearInterval(_svrTimer); _svrTimer = null; }
   var tid = 'svr' + Date.now();
   v.innerHTML = '<h3>⚙️ 服务器监控</h3>' +
     '<div class="scards" id="' + tid + '_cards"></div>' +
@@ -351,7 +358,7 @@ function serverView(v) {
     });
   }
   poll();
-  setInterval(poll, 15000);
+  _svrTimer = setInterval(poll, 15000);
 }
 
 /* ============ AI 搜索记录 ============ */
