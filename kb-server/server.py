@@ -2192,29 +2192,36 @@ async def admin_server_status():
     """
     获取服务器状态
     返回：CPU、内存、磁盘使用情况
+    注意：CPU 采样通过 run_in_executor 异步执行，不阻塞事件循环。
     """
     try:
         import psutil
-        
-        # CPU 使用率
-        cpu_percent = psutil.cpu_percent(interval=1)
-        
+        import concurrent.futures
+
+        loop = asyncio.get_event_loop()
+
+        # CPU 采样在独立线程中执行（interval=1 会阻塞 1 秒）
+        cpu_percent = await loop.run_in_executor(
+            concurrent.futures.ThreadPoolExecutor(max_workers=1),
+            lambda: psutil.cpu_percent(interval=1)
+        )
+
         # 内存使用
         memory = psutil.virtual_memory()
         memory_percent = memory.percent
         memory_total = memory.total
-        
+
         # 磁盘使用（根分区）
         disk = psutil.disk_usage("/")
         disk_percent = disk.percent
         disk_total = disk.total
-        
+
         # 运行时间
         uptime_seconds = time.time() - START_TIME
         days = int(uptime_seconds // 86400)
         hours = int((uptime_seconds % 86400) // 3600)
         uptime_str = f"{days}天 {hours}小时"
-        
+
         return {
             "cpu": cpu_percent,
             "memory": memory_percent,

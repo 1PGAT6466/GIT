@@ -613,9 +613,11 @@ function cfgHighlight(text){
 // Upload
 var upZone=document.querySelector('.upload-zone');
 if(upZone){
-  upZone.addEventListener('dragover',function(e){e.preventDefault();upZone.classList.add('dragover')});
-  upZone.addEventListener('dragleave',function(){upZone.classList.remove('dragover')});
-  upZone.addEventListener('drop',function(e){e.preventDefault();upZone.classList.remove('dragover');handleDrop(e.dataTransfer.files)});
+  var dragCounter = 0;
+  upZone.addEventListener('dragenter',function(e){e.preventDefault();dragCounter++;upZone.classList.add('dragover')});
+  upZone.addEventListener('dragover',function(e){e.preventDefault()});
+  upZone.addEventListener('dragleave',function(e){dragCounter--;if(dragCounter===0)upZone.classList.remove('dragover')});
+  upZone.addEventListener('drop',function(e){e.preventDefault();dragCounter=0;upZone.classList.remove('dragover');handleDrop(e.dataTransfer.files)});
 }
 var folderInput=document.getElementById('folderInput');
 if(folderInput){folderInput.onchange=function(){if(this.files.length)uploadFiles(Array.from(this.files))}}
